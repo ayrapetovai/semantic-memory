@@ -174,7 +174,7 @@ def index_root(con, root, force=False):
     for rp in removed:
         purge_file(con, rp)
         db.meta_set(con, "hash:" + rp, "")
-    con.commit()
     db.meta_set(con, "root", os.path.abspath(root))
     db.meta_set(con, "embedded", "1" if embed.available() else "0")
+    con.commit()
     return files, symbols, changed, removed

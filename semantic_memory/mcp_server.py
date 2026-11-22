@@ -103,6 +103,8 @@ def root():
 
 def open_db():
     con = db.connect()
+    if con.execute("SELECT COUNT(*) FROM fact").fetchone()[0] == 0:
+        facts.rebuild_facts(con)
     if con.execute("SELECT COUNT(*) FROM file").fetchone()[0] == 0:
         codeindex.index_root(con, root())
     return con

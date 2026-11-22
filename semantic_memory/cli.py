@@ -24,6 +24,8 @@ def root(args):
 
 
 def main(argv=None):
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8")
     parser = argparse.ArgumentParser(description="semantic-memory: память фактов + индекс кода")
     parser.add_argument("command", help="index|serve|code|symbol|callers|callees|refs|outline|map|facts|add|stats")
     parser.add_argument("arg", nargs="?", default="")

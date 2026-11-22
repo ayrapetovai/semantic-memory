@@ -55,9 +55,10 @@ python tests\test_semantic_memory.py
 
 ## MCP для harness
 
-Сервер: `python -m semantic_memory.mcp` (модуль `semantic_memory.mcp_server`,
-алиас `mcp` не нужен — вызывайте модуль целиком). Корень кода —
-`SEMANTIC_MEMORY_ROOT`, по умолчанию родительская папка проекта.
+Сервер: `python -m semantic_memory.mcp` (тот же `mcp_server.serve()` из
+`semantic_memory.cli serve`). Корень кода — `SEMANTIC_MEMORY_ROOT` (по умолчанию
+cwd процесса), индекс — `SEMANTIC_MEMORY_DB` (по умолчанию `index.db`). Первый
+вызов инструмента строит индекс, если он пуст.
 
 Конфиг в формате harness (`mcpServers`, stdio):
 
@@ -65,14 +66,19 @@ python tests\test_semantic_memory.py
 {
   "mcpServers": {
     "semantic-memory": {
-      "type": "stdio",
       "command": "C:\\Users\\Artem\\Documents\\Strata\\Workspace\\semantic-memory\\.venv\\Scripts\\python.exe",
-      "args": ["-m", "semantic_memory.cli", "serve"],
+      "args": ["-m", "semantic_memory.mcp"],
       "cwd": "C:\\Users\\Artem\\Documents\\Strata\\Workspace\\semantic-memory",
       "env": { "SEMANTIC_MEMORY_ROOT": "C:\\Users\\Artem\\Documents\\Strata\\Workspace" }
     }
   }
 }
+```
+
+Проверка без harness — запросы по stdin:
+
+```powershell
+Get-Content tests\mcp_requests.jsonl | .venv\Scripts\python.exe -m semantic_memory.mcp
 ```
 
 Инструменты: `code_search`, `symbol`, `callers`, `callees`, `references`,

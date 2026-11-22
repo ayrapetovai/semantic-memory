@@ -38,14 +38,15 @@ def ensure_venv():
 
 
 def ensure_model_cache():
-    if os.path.exists(os.path.join(CACHE, "models--Qdrant--MiniLM")) or \
-       any(d.startswith("models--") for d in os.listdir(CACHE) if os.path.isdir(os.path.join(CACHE, d))):
+    if os.path.isdir(CACHE) and any(
+            d.startswith("models--") for d in os.listdir(CACHE)
+            if os.path.isdir(os.path.join(CACHE, d))):
         return True
     if os.path.isdir(DONOR):
         os.makedirs(CACHE, exist_ok=True)
         for name in os.listdir(DONOR):
             src = os.path.join(DONOR, name)
-            if os.path.isdir(src) and name.startswith("models--"):
+            if os.path.isdir(src):
                 shutil.copytree(src, os.path.join(CACHE, name), dirs_exist_ok=True)
         return True
     return False
@@ -59,12 +60,20 @@ def check():
 
 
 def reindex(force=False):
-    sys.path.insert(0, ROOT)
-    from semantic_memory import codeindex, db
-    con = db.connect()
-    files, symbols, changed, removed = codeindex.index_root(con, code_root(), force=force)
-    print("индекс: файлов %d, символов %d, перестроено %d, удалено %d"
-          % (files, symbols, len(changed), removed))
+    """Перестройка индекса — внутри venv, где стоят fastembed и numpy."""
+    py = VENV_PY if os.path.isfile(VENV_PY) else sys.executable
+    code = (
+        "import sys\nsys.path.insert(0, " + repr(ROOT) + ")\n"
+        "from semantic_memory import codeindex, db, facts\n"
+        "con = db.connect()\n"
+        "files, symbols, changed, removed = codeindex.index_root(con, "
+        + repr(code_root()) + ", force=" + repr(bool(force)) + ")\n"
+        "n, topics = facts.rebuild_facts(con, force=" + repr(bool(force)) + ")\n"
+        "print('индекс: файлов %d, символов %d, перестроено %d, удалено %d'\n"
+        "      % (files, symbols, len(changed), len(removed)))\n"
+        "print('факты: %d, темы: %s' % (n, ', '.join(topics)))\n"
+    )
+    return run([py, "-c", code])
 
 
 def main(argv=None):
