@@ -1,9 +1,10 @@
 r"""MCP-сервер semantic-memory: stdio, JSON-RPC, без внешних зависимостей.
 
 Harness подключает его как mcpServers/stdio: command — python из
-semantic-memory\\.venv, args — ["-m", "semantic_memory.mcp"]. Корень кода берётся
-из SEMANTIC_MEMORY_ROOT (по умолчанию cwd процесса), индекс строится лениво при
-первом запросе.
+semantic-memory\\.venv, args — путь к run_mcp.py. Корень кода — рабочая
+директория процесса (cwd сессии harness), индекс строится лениво при первом
+запросе; если сервер запущен в другой директории, код старого корня снимается
+и строится индекс нового.
 
 Формат ответов — текст для чтения LLM: `файл:строки` + сигнатура, тело символа
 целиком, а не JSON-фрагменты.
@@ -98,16 +99,25 @@ TOOLS = [
 
 
 def root():
-    value = os.environ.get("SEMANTIC_MEMORY_ROOT")
-    return os.path.abspath(os.path.expanduser(value)) if value else os.getcwd()
+    """Корень кода — рабочая директория процесса (cwd сессии harness)."""
+    return os.getcwd()
 
 
 def open_db():
+    """Индекс под текущий корень (cwd процесса). Смена корня перестраивает код.
+
+    Факты читаются из config.MEMORY_DIR и общие для всех корней; код
+    (file/sym/call/ref) относится к одному корню. При смене cwd старый код
+    снимается из индекса, обход нового корня строит его заново; неизменённые
+    файлы под тем же корнем пропускаются по sha256.
+    """
     con = db.connect()
+    rt = root()
+    if db.meta_get(con, "root") != rt:
+        codeindex.reset_code(con)
+    codeindex.index_root(con, rt)
     if con.execute("SELECT COUNT(*) FROM fact").fetchone()[0] == 0:
         facts.rebuild_facts(con)
-    if con.execute("SELECT COUNT(*) FROM file").fetchone()[0] == 0:
-        codeindex.index_root(con, root())
     return con
 
 

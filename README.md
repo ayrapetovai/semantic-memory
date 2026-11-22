@@ -38,22 +38,21 @@ LLM читает код фрагментами и теряет связи: кт�
 Windows (PowerShell):
 
 ```powershell
-python init.py                 # venv + пакеты + индекс
+python init.py                 # venv + пакеты + индекс (cwd)
 python init.py --check         # состояние без правок
-$env:SEMANTIC_MEMORY_ROOT = "C:\Users\%USERNAME%\Documents\Strata\Workspace"
 .venv\Scripts\python.exe -X utf8 -m semantic_memory.cli code "hybrid search" -k 6
 ```
 
 Linux (bash):
 
 ```bash
-python3 init.py                # venv + пакеты + индекс
+python3 init.py                # venv + пакеты + индекс (cwd)
 python3 init.py --check
-export SEMANTIC_MEMORY_ROOT=/path/to/workspace
 .venv/bin/python -m semantic_memory.cli code "hybrid search" -k 6
 ```
 
-CLI (команды те же на обеих системах, из папки semantic-memory):
+CLI (команды те же на обеих системах, из папки semantic-memory; корень кода —
+cwd, переопределяется `--root`):
 
 ```bash
 .venv/bin/python -m semantic_memory.cli index
@@ -71,33 +70,72 @@ CLI (команды те же на обеих системах, из папки 
 ## Кроссплатформенность
 
 - Пути в индексе хранятся относительными и с `/` (`codeindex.rel`), запросы вида
-  `semantic_memory/search.py` работают на обеих системах; `~` в `SEMANTIC_MEMORY_ROOT`
-  раскрывается.
+  `semantic_memory/search.py` работают на обеих системах; `~` раскрывается в
+  `--root` CLI и `SEMANTIC_MEMORY_ROOT` init.py.
 - SQLite, `ast`, regex-разбор и `fastembed` (ONNX) есть на Windows и Linux; кэш модели
   лежит в `.models`, скачивается при первом запуске, если донора нет.
 - Вывод — UTF-8: на Windows CLI перестраивает stdout, на Linux кодировка по умолчанию.
 - `.gitattributes` фиксирует LF в текстовых файлах, чтобы checkout на Windows не
   менял переводы строк.
-- Проверено на Windows (тесты + MCP по stdio); на Linux локального запуска не было —
-  на этой машине Linux отсутствует.
+- Проверено на Windows и Linux (тесты + MCP по stdio).
 
 ## MCP для harness
 
-Сервер: `python -m semantic_memory.mcp` (тот же `mcp_server.serve()` из
-`semantic_memory.cli serve`). Корень кода — `SEMANTIC_MEMORY_ROOT` (по умолчанию
-cwd процесса), индекс — `SEMANTIC_MEMORY_DB` (по умолчанию `index.db`). Первый
-вызов инструмента строит индекс, если он пуст.
+Сервер: `python /path/to/semantic-memory/run_mcp.py` — можно запустить из любой
+директории; или `python -m semantic_memory.mcp` из папки semantic-memory (тот же
+`mcp_server.serve()` из `semantic_memory.cli serve`). Корень кода — рабочая
+директория процесса (cwd сессии harness), индекс — `SEMANTIC_MEMORY_DB` (по
+умолчанию `index.db`). Первый вызов инструмента строит индекс под текущий корень;
+если сервер запущен в другой директории, код старого корня снимается и строится
+новый. Факты из `memory/*.md` общие для всех корней.
 
-Конфиг в формате harness (`mcpServers`, stdio):
+### OpenCode
+
+V2 читает серверы под `mcp.servers` (не `mcpServers`), локальный сервер —
+`"type": "local"` и `command` одним массивом. В глобальный конфиг
+`~/.config/opencode/opencode.jsonc`:
+
+```jsonc
+{
+  "mcp": {
+    "servers": {
+      "semantic-memory": {
+        "type": "local",
+        "command": ["/path/to/semantic-memory/.venv/bin/python",
+                    "/path/to/semantic-memory/run_mcp.py"]
+      }
+    }
+  }
+}
+```
+
+На Windows те же пути: `.venv\\Scripts\\python.exe` и `run_mcp.py`. Тот же блок
+пишет CLI:
+
+```bash
+opencode mcp add semantic-memory --global -- \
+  /path/to/semantic-memory/.venv/bin/python \
+  /path/to/semantic-memory/run_mcp.py
+```
+
+`cwd` не указывайте: OpenCode запускает сервер в рабочей директории открытого
+проекта — именно её индекс получает сессия. `pool: true` тоже не ставьте: он
+делает одно соединение на все директории и ломает индекс по cwd.
+
+Проверка: `/mcps` в TUI или `opencode mcp list` — `✓ semantic-memory connected`.
+Инструменты видны Code Mode как `tools.semantic-memory.*`.
+
+### Другие harness
+
+Формат `mcpServers` (Claude, Cursor и т. п.), stdio. `cwd` не указывайте —
+harness запускает сервер в рабочей директории сессии, её и индексируем:
 
 ```json
 {
   "mcpServers": {
     "semantic-memory": {
       "command": "C:\\Users\\%USERNAME%\\Documents\\Strata\\Workspace\\semantic-memory\\.venv\\Scripts\\python.exe",
-      "args": ["-m", "semantic_memory.mcp"],
-      "cwd": "C:\\Users\\%USERNAME%\\Documents\\Strata\\Workspace\\semantic-memory",
-      "env": { "SEMANTIC_MEMORY_ROOT": "C:\\Users\\%USERNAME%\\Documents\\Strata\\Workspace" }
+      "args": ["C:\\Users\\%USERNAME%\\Documents\\Strata\\Workspace\\semantic-memory\\run_mcp.py"]
     }
   }
 }
@@ -110,9 +148,7 @@ Linux — тот же блок, только пути:
   "mcpServers": {
     "semantic-memory": {
       "command": "/path/to/workspace/semantic-memory/.venv/bin/python",
-      "args": ["-m", "semantic_memory.mcp"],
-      "cwd": "/path/to/workspace/semantic-memory",
-      "env": { "SEMANTIC_MEMORY_ROOT": "/path/to/workspace" }
+      "args": ["/path/to/workspace/semantic-memory/run_mcp.py"]
     }
   }
 }

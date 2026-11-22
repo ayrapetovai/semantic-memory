@@ -5,9 +5,9 @@ r"""Bootstrap semantic-memory: venv, пакеты, кэш модели, инде
   python init.py --reindex  перестроить индекс целиком
 
 Кэш ONNX-модели копируется из ..\mem0-like\.models, если там есть MiniLM — так
-не нужен повторный download. Корень кода для индекса — переменная
-SEMANTIC_MEMORY_ROOT (expanduser, `~`) или родительская папка проекта. Python в
-venv: Windows — .venv\Scripts\python.exe, Linux и macOS — .venv/bin/python.
+не нужен повторный download. Корень кода для индекса — рабочая директория запуска init.py (или переменная
+SEMANTIC_MEMORY_ROOT, expanduser `~`). Python в venv: Windows — .venv\Scripts\python.exe,
+Linux и macOS — .venv/bin/python.
 """
 
 import os
@@ -30,7 +30,7 @@ def run(cmd, cwd=None):
 
 def code_root():
     value = os.environ.get("SEMANTIC_MEMORY_ROOT")
-    return os.path.abspath(os.path.expanduser(value)) if value else os.path.dirname(ROOT)
+    return os.path.abspath(os.path.expanduser(value)) if value else os.getcwd()
 
 
 def ensure_venv():

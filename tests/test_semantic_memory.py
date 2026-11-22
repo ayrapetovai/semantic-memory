@@ -12,7 +12,6 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 _TMP = tempfile.mkdtemp()
 os.environ["SEMANTIC_MEMORY_DB"] = os.path.join(_TMP, "index.db")
-os.environ["SEMANTIC_MEMORY_ROOT"] = _TMP
 
 from semantic_memory import codeindex, codeparse, config, db, facts, mcp_server, search
 
@@ -58,6 +57,8 @@ JS = '''export class Panel {
 class SemanticMemoryTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
+        cls._cwd = os.getcwd()
+        os.chdir(_TMP)  # корень кода для MCP и CLI — cwd процесса
         os.makedirs(os.path.join(_TMP, "src"), exist_ok=True)
         with open(os.path.join(_TMP, "src", "service.py"), "w", encoding="utf-8") as f:
             f.write(SERVICE)
@@ -68,6 +69,10 @@ class SemanticMemoryTest(unittest.TestCase):
         files, symbols, changed, removed = codeindex.index_root(cls.con, _TMP)
         cls.files = files
         cls.symbols = symbols
+
+    @classmethod
+    def tearDownClass(cls):
+        os.chdir(cls._cwd)
 
     def test_index_counts(self):
         self.assertEqual(self.files, 2)
@@ -127,6 +132,27 @@ class SemanticMemoryTest(unittest.TestCase):
         stats = mcp_server.call_tool(self.con, "index_stats", {})
         self.assertIn("файлы", stats)
         self.assertEqual(len(mcp_server.TOOLS), 12)
+
+    def test_mcp_root_follows_cwd(self):
+        """MCP индексирует cwd процесса: смена директории перестраивает индекс.
+
+        Факты остаются, код старого корня снимается.
+        """
+        other = tempfile.mkdtemp()
+        with open(os.path.join(other, "other.py"), "w", encoding="utf-8") as f:
+            f.write("def other_tool():\n    return 2\n")
+        os.chdir(other)
+        try:
+            con = mcp_server.open_db()
+            stats = mcp_server.call_tool(con, "index_stats", {})
+            self.assertIn(other, stats)
+            self.assertEqual(con.execute("SELECT COUNT(*) FROM file").fetchone()[0], 1)
+            self.assertIn("other_tool", search.symbol_by_name(con, "other_tool")[0]["qual"])
+            outline = mcp_server.call_tool(con, "file_outline", {"path": "src/service.py"})
+            self.assertIn("не индексирован", outline)
+        finally:
+            os.chdir(_TMP)
+            codeindex.index_root(self.con, _TMP)  # вернуть общий индекс для остальных тестов
 
     def test_paths_portable(self):
         """Индекс хранит «/»; аргумент пути принимается в любом виде."""

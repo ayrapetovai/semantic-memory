@@ -60,6 +60,18 @@ def purge_file(con, rel_path):
     con.execute("DELETE FROM file WHERE path = ?", (rel_path,))
 
 
+def reset_code(con):
+    """Снимает весь код из индекса (факты остаются). Используется при смене корня."""
+    con.execute("DELETE FROM sym_vec")
+    con.execute("DELETE FROM sym_fts")
+    con.execute("DELETE FROM call")
+    con.execute("DELETE FROM ref")
+    con.execute("DELETE FROM sym")
+    con.execute("DELETE FROM file")
+    con.execute("DELETE FROM meta WHERE k LIKE 'file:%' OR k LIKE 'hash:%'")
+    con.commit()
+
+
 def summarize(fp):
     """Резюме файла: первый docstring/комментарий + counts + imports."""
     head = ""
