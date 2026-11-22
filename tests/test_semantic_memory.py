@@ -1,6 +1,6 @@
-r"""Smoke-тесты semantic-memory: разбор кода, индекс, поиск, MCP-инструменты.
+r"""Smoke tests for semantic-memory: code parsing, index, search, MCP tools.
 
-Запуск: python tests/test_semantic_memory.py   (из папки semantic-memory)
+Run: python tests/test_semantic_memory.py   (from the semantic-memory folder)
 """
 
 import os
@@ -15,20 +15,20 @@ os.environ["SEMANTIC_MEMORY_DB"] = os.path.join(_TMP, "index.db")
 
 from semantic_memory import codeindex, codeparse, config, db, facts, mcp_server, search
 
-SERVICE = '''"""Сервер поиска по строкам."""
+SERVICE = '''"""Line search server."""
 import json
 
 
 def build_index(rows):
-    """Собрать индекс строк по id."""
+    """Build a line index keyed by id."""
     return {r["id"]: r for r in rows}
 
 
 class Store:
-    """Хранилище документов."""
+    """Document storage."""
 
     def load(self, path):
-        """Прочитать документ из файла."""
+        """Read a document from a file."""
         with open(path, encoding="utf-8") as f:
             return json.loads(f.read())
 
@@ -58,7 +58,7 @@ class SemanticMemoryTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls._cwd = os.getcwd()
-        os.chdir(_TMP)  # корень кода для MCP и CLI — cwd процесса
+        os.chdir(_TMP)  # the code root for MCP and CLI is the process cwd
         os.makedirs(os.path.join(_TMP, "src"), exist_ok=True)
         with open(os.path.join(_TMP, "src", "service.py"), "w", encoding="utf-8") as f:
             f.write(SERVICE)
@@ -118,9 +118,9 @@ class SemanticMemoryTest(unittest.TestCase):
         self.assertIn("extra_helper", search.symbol_by_name(self.con, "extra_helper")[0]["qual"])
 
     def test_facts(self):
-        facts.append_fact(self.con, "Кулер: 120 мм, 45 дБ, 35 Вт.", "hardware")
+        facts.append_fact(self.con, "Cooling fan: 120 mm, 45 dB, 35 W.", "hardware")
         facts.rebuild_facts(self.con)
-        hits = search.search_facts(self.con, "кулер", 3, "hardware")
+        hits = search.search_facts(self.con, "cooling fan", 3, "hardware")
         self.assertTrue(hits)
         self.assertEqual(hits[0]["topic"], "hardware")
 
@@ -130,11 +130,11 @@ class SemanticMemoryTest(unittest.TestCase):
         outline = mcp_server.call_tool(self.con, "file_outline", {"path": "src/service.py"})
         self.assertIn("Store.load", outline)
         stats = mcp_server.call_tool(self.con, "index_stats", {})
-        self.assertIn("файлы", stats)
+        self.assertIn("files", stats)
         self.assertEqual(len(mcp_server.TOOLS), 12)
 
     def test_db_per_root_files(self):
-        """Индекс каждого корня — свой файл в INDEX_DIR; чужие не повреждаются."""
+        """Each root keeps its own index file; other roots stay untouched."""
         old_db, old_dir = config.DB, config.INDEX_DIR
         other = tempfile.mkdtemp()
         try:
@@ -164,9 +164,9 @@ class SemanticMemoryTest(unittest.TestCase):
             os.chdir(_TMP)
 
     def test_mcp_root_follows_cwd(self):
-        """MCP индексирует cwd процесса: смена директории перестраивает индекс.
+        """MCP indexes the process cwd: changing directory rebuilds the index.
 
-        Факты остаются, код старого корня снимается.
+        Facts stay; code from the old root is dropped.
         """
         other = tempfile.mkdtemp()
         with open(os.path.join(other, "other.py"), "w", encoding="utf-8") as f:
@@ -179,13 +179,13 @@ class SemanticMemoryTest(unittest.TestCase):
             self.assertEqual(con.execute("SELECT COUNT(*) FROM file").fetchone()[0], 1)
             self.assertIn("other_tool", search.symbol_by_name(con, "other_tool")[0]["qual"])
             outline = mcp_server.call_tool(con, "file_outline", {"path": "src/service.py"})
-            self.assertIn("не индексирован", outline)
+            self.assertIn("not indexed", outline)
         finally:
             os.chdir(_TMP)
-            codeindex.index_root(self.con, _TMP)  # вернуть общий индекс для остальных тестов
+            codeindex.index_root(self.con, _TMP)  # restore the shared index for the other tests
 
     def test_paths_portable(self):
-        """Индекс хранит «/»; аргумент пути принимается в любом виде."""
+        """The index stores "/"; a path argument is accepted in any form."""
         rp = codeindex.rel(os.path.join(_TMP, "src", "service.py"), _TMP)
         self.assertEqual(rp, "src/service.py")
         self.assertNotIn("\\", rp)

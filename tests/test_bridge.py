@@ -1,6 +1,6 @@
-r"""Тест NDJSON-моста для плагинов: subprocess python -m semantic_memory.bridge.
+r"""Test for the NDJSON bridge used by plugins: subprocess python -m semantic_memory.bridge.
 
-Запуск: python tests/test_bridge.py
+Run: python tests/test_bridge.py
 """
 
 import json
@@ -13,7 +13,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 TMP = tempfile.mkdtemp()
 os.makedirs(os.path.join(TMP, "src"), exist_ok=True)
 with open(os.path.join(TMP, "src", "app.py"), "w", encoding="utf-8") as f:
-    f.write("def build_cache():\n    \"\"\"Кэш документов.\"\"\"\n    return {}\n")
+    f.write("def build_cache():\n    \"\"\"Document cache.\"\"\"\n    return {}\n")
 
 
 def start_bridge():
@@ -43,27 +43,27 @@ def main():
         assert ping["ok"] and ping["id"] == 1, ping
         assert os.path.abspath(ping["root"]) == os.path.abspath(TMP), ping["root"]
 
-        added = send(proc, {"id": 2, "cmd": "add", "text": "Кулер: 120 мм, 12 Вт.", "topic": "hardware"})
+        added = send(proc, {"id": 2, "cmd": "add", "text": "Cooling fan: 120 mm, 12 W.", "topic": "hardware"})
         assert added["ok"] and added["topic"] == "hardware", added
         assert added["facts"] >= 1, added
 
-        hits = send(proc, {"id": 3, "cmd": "recall", "query": "кулер", "k": 3})
+        hits = send(proc, {"id": 3, "cmd": "recall", "query": "cooling fan", "k": 3})
         assert hits["ok"] and hits["id"] == 3, hits
-        assert any("кулер" in f["text"].lower() for f in hits["facts"]), hits
+        assert any("cooling fan" in f["text"].lower() for f in hits["facts"]), hits
 
-        # внешний bullet в memory/*.md подхватывается без перезапуска процесса
+        # a bullet written into memory/*.md is picked up without restarting the process
         memory_file = os.path.join(TMP, "memory", "decisions.md")
         with open(memory_file, "w", encoding="utf-8") as f:
-            f.write("# decisions\n\n- Кэш ответов занимает 64 МБ.\n")
-        hits = send(proc, {"id": 4, "cmd": "recall", "query": "кэш 64 МБ", "k": 3})
-        assert any("64 МБ" in f["text"] for f in hits["facts"]), hits
+            f.write("# decisions\n\n- The response cache takes 64 MB.\n")
+        hits = send(proc, {"id": 4, "cmd": "recall", "query": "cache 64 MB", "k": 3})
+        assert any("64 MB" in f["text"] for f in hits["facts"]), hits
 
         reindex = send(proc, {"id": 4, "cmd": "reindex"})
         assert reindex["ok"], reindex
         with open(os.path.join(TMP, "src", "cache.py"), "w", encoding="utf-8") as f:
             f.write("def warm():\n    return 1\n")
-        # open_db() индексирует корень на каждом запросе, поэтому индекс виден
-        # в stats; force=true перечитывает файлы и возвращает их список.
+        # open_db() indexes the root on every request, so the index shows up
+        # in stats; force=true re-reads the files and returns their list.
         stats = send(proc, {"id": 5, "cmd": "stats"})
         assert stats["ok"] and stats["files"] >= 1, stats
         forced = send(proc, {"id": 6, "cmd": "reindex", "force": True})
@@ -72,7 +72,7 @@ def main():
 
         bad = send(proc, {"id": 7, "cmd": "unknown"})
         assert not bad["ok"] and bad["id"] == 7, bad
-        proc.stdin.write("это не json\n")
+        proc.stdin.write("this is not json\n")
         proc.stdin.flush()
         bad2 = json.loads(proc.stdout.readline())
         assert not bad2["ok"], bad2

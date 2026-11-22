@@ -1,4 +1,4 @@
-"""Точка входа MCP: python -m semantic_memory.mcp"""
+"""MCP entry point: python -m semantic_memory.mcp"""
 
 from .mcp_server import serve
 

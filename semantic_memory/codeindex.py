@@ -1,8 +1,8 @@
-r"""Индекс кода: обход файлов, символы, вызовы, ссылки, резюме файла.
+r"""Code index: file walk, symbols, calls, references, file summary.
 
-id символа стабилен: meta "file:<path>" закрепляет номер файла, символ получает
-SYMBOL_ID_BASE + file_index * 10000 + позиция. Файл перестраивается только если
-изменился его sha256; удалённый файл снимается из индекса.
+Symbol ids are stable: meta "file:<path>" pins the file number, a symbol gets
+SYMBOL_ID_BASE + file_index * 10000 + position. A file is rebuilt only when its
+sha256 changed; a deleted file is dropped from the index.
 """
 
 import hashlib
@@ -19,7 +19,7 @@ def rel(path, root):
 
 
 def iter_code(root):
-    """Файлы, которые стоит индексировать (языки из config.CODE_EXT)."""
+    """Files worth indexing (languages from config.CODE_EXT)."""
     root = os.path.abspath(root)
     out = []
     for dirpath, dirnames, filenames in os.walk(root):
@@ -61,7 +61,7 @@ def purge_file(con, rel_path):
 
 
 def reset_code(con):
-    """Снимает весь код из индекса (факты остаются). Используется при смене корня."""
+    """Removes all code from the index (facts stay). Used when the root changes."""
     con.execute("DELETE FROM sym_vec")
     con.execute("DELETE FROM sym_fts")
     con.execute("DELETE FROM call")
@@ -73,7 +73,7 @@ def reset_code(con):
 
 
 def summarize(fp):
-    """Резюме файла: первый docstring/комментарий + counts + imports."""
+    """File summary: first docstring/comment line + counts + imports."""
     head = ""
     for line in fp.lines[:40]:
         s = line.strip()
@@ -90,12 +90,12 @@ def summarize(fp):
     for sym in fp.symbols:
         kinds[sym.kind] = kinds.get(sym.kind, 0) + 1
     parts = ["%s: %s" % (fp.lang, ", ".join(
-        "%d %s" % (n, k) for k, n in sorted(kinds.items())) or "без символов")]
+        "%d %s" % (n, k) for k, n in sorted(kinds.items())) or "no symbols")]
     names = [s.name for s in fp.symbols][:12]
     if names:
-        parts.append("символы: " + ", ".join(names))
+        parts.append("symbols: " + ", ".join(names))
     if fp.imports:
-        parts.append("импорты: " + ", ".join(fp.imports[:12]))
+        parts.append("imports: " + ", ".join(fp.imports[:12]))
     if head:
         parts.insert(0, head)
     return " · ".join(parts)[:400]
@@ -113,7 +113,7 @@ def fts_text(sym):
 
 
 def index_paths(con, root, paths, force=False):
-    """Индексировать файлы; пропускает неизменённые. → (files, symbols, changed)."""
+    """Index the given files, skipping unchanged ones. Returns (files, symbols, changed)."""
     parsed = []
     known_names = {n for (n,) in con.execute("SELECT name FROM sym").fetchall()}
     for full in paths:
@@ -178,7 +178,7 @@ def index_paths(con, root, paths, force=False):
 
 
 def index_root(con, root, force=False):
-    """Полный обход корня; эмбеддинги пересчитываются только для новых файлов."""
+    """Full walk of the root; embeddings are recomputed only for files that changed."""
     paths = iter_code(root)
     files, symbols, changed = index_paths(con, root, paths, force=force)
     stored = {p for (p,) in con.execute("SELECT path FROM file").fetchall()}

@@ -4,10 +4,10 @@ import { existsSync } from "node:fs"
 import path from "node:path"
 
 /**
- * Автоматическая память: диалог пишется в memory/*.md через Python-мост
- * (python -m semantic_memory.bridge), релевантные факты добавляются в system
- * каждого хода модели. MCP-инструменты semantic-memory остаются для явных
- * запросов (facts_search, facts_add, index_*).
+ * Automatic memory: the dialogue is written into memory/*.md through the Python
+ * bridge (python -m semantic_memory.bridge), relevant facts are added to the
+ * system prompt of every model turn. The semantic-memory MCP tools stay for
+ * explicit requests (facts_search, facts_add, index_*).
  */
 
 interface MemoryFact {
@@ -17,17 +17,17 @@ interface MemoryFact {
 }
 
 interface Options {
-  /** Python с установленным semantic-memory (по умолчанию .venv/bin/python). */
+  /** Python with semantic-memory installed (defaults to .venv/bin/python). */
   python?: string
-  /** Модель для дистилляции: {"providerID": "...", "id": "..."}; без неё ходит model сессии. */
+  /** Model for distillation: {"providerID": "...", "id": "..."}; without it the session model is used. */
   model?: { providerID: string; id: string }
-  /** Писать факты из хода модели (LLM-извлечение). */
+  /** Write facts from a model turn (LLM extraction). */
   distill?: boolean
-  /** Подбрасывать recalled-факты в system перед каждым ходом модели. */
+  /** Feed recalled facts into system before each model turn. */
   inject?: boolean
-  /** Писать реплики пользователя в topic chat. */
+  /** Write the user's turns into the chat topic. */
   captureChat?: boolean
-  /** Логировать recall/inject/distill в stderr сервера (SEMANTIC_MEMORY_DEBUG=1). */
+  /** Log recall/inject/distill to server stderr (SEMANTIC_MEMORY_DEBUG=1). */
   debug?: boolean
   recallK?: number
   chatTopic?: string
@@ -38,12 +38,12 @@ interface Options {
 const TOPIC_RE = /^[A-Za-z0-9_-]+$/
 const WRITE_TOOLS = ["edit", "write", "apply_patch"]
 const DISTILL_PROMPT =
-  "Из фрагмента диалога извлеки 0–3 факта для долговременной памяти проекта: " +
-  "решения, договорённости, параметры, ограничения. Ответь только JSON без " +
-  'пояснений: {"facts":[{"text":"...","topic":"..."}]}. ' +
-  'topic — короткое имя файла ([A-Za-z0-9_-]+). Если фактов нет — {"facts":[]}.\n\n'
+  "From the dialogue fragment extract 0-3 facts for the long-term memory of the " +
+  "project: decisions, agreements, parameters, constraints. Answer with JSON only, " +
+  'no explanation: {"facts":[{"text":"...","topic":"..."}]}. ' +
+  'topic — a short file name ([A-Za-z0-9_-]+). If there are no facts — {"facts":[]}.\n\n'
 
-/** Python с installed semantic-memory: option → SEMANTIC_MEMORY_PYTHON → .venv. */
+/** Python with semantic-memory installed: option → SEMANTIC_MEMORY_PYTHON → .venv. */
 function pickPython(dir: string, opt?: string): string {
   if (opt) return opt
   if (process.env.SEMANTIC_MEMORY_PYTHON) return process.env.SEMANTIC_MEMORY_PYTHON
@@ -54,7 +54,7 @@ function pickPython(dir: string, opt?: string): string {
   return "python3"
 }
 
-/** NDJSON-клиент к `python -m semantic_memory.bridge`: строка запроса → строка ответа. */
+/** NDJSON client for `python -m semantic_memory.bridge`: one request line → one answer line. */
 function startBridge(dir: string, python: string) {
   const proc = spawn(python, ["-m", "semantic_memory.bridge"], { cwd: dir, env: process.env })
   let buffer = ""
@@ -111,13 +111,13 @@ function norm(text: string): string {
   return text.toLowerCase().replace(/\s+/g, " ").trim()
 }
 
-/** "тема :: bullet" из recalled → только текст bullet. */
+/** "topic :: bullet" from recalled → only the bullet text. */
 function bulletText(text: string): string {
   const i = text.indexOf(" :: ")
   return i >= 0 ? text.slice(i + 4) : text
 }
 
-/** Эхо текущего запроса: recall возвращает bullet, написанный из этого же текста. */
+/** Echo of the current request: recall returns the bullet written from this same text. */
 function isEcho(query: string, fact: string): boolean {
   const q = norm(query)
   const f = norm(bulletText(fact))
@@ -128,14 +128,14 @@ function formatMemory(facts: MemoryFact[]): string {
   const lines = facts.map((f) => `- [${f.topic}] ${bulletText(f.text)}`).join("\n")
   return (
     "<memory>\n" +
-    "Релевантные факты из памяти проекта (memory/*.md). Опирайся на них; " +
-    "новые решения записывай MCP-инструментом facts_add или оставь их плагину.\n" +
+    "Relevant facts from the project memory (memory/*.md). Rely on them; write new " +
+    "decisions with the facts_add MCP tool or leave them to the plugin.\n" +
     lines +
     "\n</memory>"
   )
 }
 
-/** V2 сообщения: {type:"user", text} и {type:"assistant", content:[{type:"text"}]}. */
+/** V2 messages: {type:"user", text} and {type:"assistant", content:[{type:"text"}]}. */
 function messageText(msg: any): string {
   if (typeof msg?.text === "string") return msg.text
   const items: any[] = Array.isArray(msg?.content) ? msg.content : Array.isArray(msg?.parts) ? msg.parts : []
@@ -145,7 +145,7 @@ function messageText(msg: any): string {
     .join("\n")
 }
 
-/** Хвост диалога user/assistant для извлечения фактов. */
+/** Tail of the user/assistant dialogue used for fact extraction. */
 function transcript(messages: any[]): string {
   const lines: string[] = []
   for (const msg of messages.slice(-6)) {
@@ -157,7 +157,7 @@ function transcript(messages: any[]): string {
   return lines.join("\n")
 }
 
-/** Ответ модели {"facts":[{text,topic}]} → валидированные факты. */
+/** Model answer {"facts":[{text,topic}]} → validated facts. */
 function parseFacts(raw: string, fallbackTopic: string): MemoryFact[] {
   const match = raw.match(/\{[\s\S]*\}/)
   if (!match) return []
@@ -199,7 +199,7 @@ export default Plugin.define({
     const admitted = new Set<string>()
     const controller = new AbortController()
 
-    /** LLM-извлечение фактов из фрагмента диалога → memory/*.md через мост. */
+    /** LLM extraction of facts from a dialogue fragment → memory/*.md through the bridge. */
     async function distillInto(sessionID: string, text: string, fallbackTopic: string) {
       if (!distill || !text.trim()) return
       const prompt = DISTILL_PROMPT + text.slice(0, 6000)
@@ -214,7 +214,7 @@ export default Plugin.define({
       }
     }
 
-    // Реплики пользователя: recalled-факты на ход + bullet в topic chat.
+    // User turns: recalled facts for the turn + a bullet in the chat topic.
     await ctx.session.hook("prompt", async (event: any) => {
       try {
         const sessionID = String(event.sessionID)
@@ -229,7 +229,7 @@ export default Plugin.define({
         }
         if (!captureChat) return
         const key = `${sessionID}\u0000${norm(text)}`
-        if (admitted.has(key)) return // prompt hook — не exactly-once граница
+        if (admitted.has(key)) return // the prompt hook is not an exactly-once boundary
         admitted.add(key)
         const bullet = text.slice(0, 400)
         const dup = await bridge.request("recall", { query: bullet.slice(0, 200), k: 1, topic: chatTopic })
@@ -242,7 +242,7 @@ export default Plugin.define({
       }
     })
 
-    // Памятка в system на каждый ход agent-цикла (включая continuation).
+    // Memory note in system for every turn of the agent loop (including continuation).
     await ctx.session.hook("context", async (event: any) => {
       log("context turn:", String(event.sessionID), "pending:", pending.size)
       const facts = pending.get(String(event.sessionID))
@@ -251,21 +251,21 @@ export default Plugin.define({
       log("inject → system:", facts.length)
     })
 
-    // Компакция: до того как transcript свернётся, записать состояние.
+    // Compaction: record the state before the transcript gets folded away.
     await ctx.session.hook("compaction", async (event: any) => {
       void distillInto(String(event.sessionID), transcript(event.messages || []), stateTopic).catch((err) =>
         console.error("[semantic-memory] compaction distill:", err),
       )
     })
 
-    // Окончание хода: извлечь факты из последнего обмена и снять памятку.
+    // End of a turn: extract facts from the last exchange and drop the memory note.
     void (async () => {
       for await (const event of ctx.event.subscribe({
         types: ["session.execution.succeeded", "session.execution.failed", "session.execution.interrupted"],
         signal: controller.signal,
       }) as AsyncIterable<any>) {
         const sessionID = String(event.data?.sessionID ?? event.location?.sessionID ?? "")
-        // started/step-ные события тоже приходят: снимаем памятку только на провале.
+        // started and step events arrive too: drop the note only on a failure.
         if (event.type === "session.execution.failed" || event.type === "session.execution.interrupted") {
           if (sessionID) pending.delete(sessionID)
           continue
@@ -283,7 +283,7 @@ export default Plugin.define({
       }
     })().catch((err) => console.error("[semantic-memory] event loop:", err))
 
-    // Индекс кода сразу после правок файлов.
+    // Reindex the code right after file edits.
     await ctx.tool.hook("execute.after", async (event: any) => {
       const name = String(event.tool || event.name || "")
       if (!writeTools.includes(name)) return

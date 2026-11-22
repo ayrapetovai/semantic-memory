@@ -1,12 +1,12 @@
-r"""MCP-сервер semantic-memory: stdio, JSON-RPC, без внешних зависимостей.
+r"""semantic-memory MCP server: stdio, JSON-RPC, no external dependencies.
 
-Harness подключает его как mcpServers/stdio: command — python из
-semantic-memory\\.venv, args — путь к run_mcp.py. Корень кода — рабочая
-директория процесса (cwd сессии harness), индекс строится лениво при первом
-запросе и хранится отдельным файлом под каждый корень (config.INDEX_DIR).
+The harness connects to it as mcpServers/stdio: command — the python from
+semantic-memory\.venv, args — the path to run_mcp.py. The code root is the process
+working directory (the harness session cwd); the index is built lazily on the first
+request and kept in a separate file per root (config.INDEX_DIR).
 
-Формат ответов — текст для чтения LLM: `файл:строки` + сигнатура, тело символа
-целиком, а не JSON-фрагменты.
+Answers are text for an LLM to read: `file:lines` + signature, the symbol body in
+full, not JSON fragments.
 """
 
 import json
@@ -20,103 +20,100 @@ SERVER = {"name": "semantic-memory", "version": "1.0.0"}
 
 TOOLS = [
     {"name": "code_search",
-     "description": "Гибридный поиск по коду проекта: точные токены + семантика. "
-                    "Возвращает символы (функции, классы, методы) с файлом и "
-                    "строками. Используйте первым, когда нужно найти, где "
-                    "реализована функция или механизм.",
+     "description": "Hybrid search over project code: exact tokens + semantics. "
+                    "Returns symbols (functions, classes, methods) with file and "
+                    "line numbers. Use it first when you need to find where a "
+                    "function or mechanism is implemented.",
      "inputSchema": {"type": "object", "properties": {
-         "query": {"type": "string", "description": "Запрос: имя, часть имени или описание механизма."},
-         "k": {"type": "integer", "description": "Число результатов, по умолчанию 8."},
-         "lang": {"type": "string", "description": "Фильтр по языку: python, javascript, go..."},
-         "path": {"type": "string", "description": "Фильтр по подстроке пути."}},
+         "query": {"type": "string", "description": "Query: a name, part of a name, or a description of the mechanism."},
+         "k": {"type": "integer", "description": "Number of results, defaults to 8."},
+         "lang": {"type": "string", "description": "Filter by language: python, javascript, go..."},
+         "path": {"type": "string", "description": "Filter by path substring."}},
          "required": ["query"]}},
     {"name": "symbol",
-     "description": "Полное тело символа по имени или qual (Class.method). "
-                    "Читайте символ целиком, а не фрагменты из code_search.",
+     "description": "Full body of a symbol by name or qual (Class.method). "
+                    "Read a symbol in full instead of fragments from code_search.",
      "inputSchema": {"type": "object", "properties": {
-         "name": {"type": "string", "description": "Имя символа или Class.method."},
-         "body": {"type": "boolean", "description": "Включить тело кода, по умолчанию true."}},
+         "name": {"type": "string", "description": "Symbol name or Class.method."},
+         "body": {"type": "boolean", "description": "Include the body, defaults to true."}},
          "required": ["name"]}},
     {"name": "callers",
-     "description": "Кто вызывает символ — список символов, которые его используют.",
+     "description": "Who calls the symbol — the list of symbols that use it.",
      "inputSchema": {"type": "object", "properties": {
-         "name": {"type": "string", "description": "Имя вызываемого символа."}},
+         "name": {"type": "string", "description": "Name of the called symbol."}},
          "required": ["name"]}},
     {"name": "callees",
-     "description": "Что вызывает символ — имена вызовов внутри его тела.",
+     "description": "What the symbol calls — the names of calls inside its body.",
      "inputSchema": {"type": "object", "properties": {
-         "name": {"type": "string", "description": "Имя символа."}},
+         "name": {"type": "string", "description": "Symbol name."}},
          "required": ["name"]}},
     {"name": "references",
-     "description": "Где имя встречается в проекте (файл:строка), включая места вне вызовов.",
+     "description": "Where the name appears in the project (file:line), including places outside calls.",
      "inputSchema": {"type": "object", "properties": {
-         "name": {"type": "string", "description": "Имя функции, класса или метода."}},
+         "name": {"type": "string", "description": "Function, class or method name."}},
          "required": ["name"]}},
     {"name": "file_outline",
-     "description": "Карта файла: символы по порядку со строками и сигнатурами.",
+     "description": "File map: symbols in order with line ranges and signatures.",
      "inputSchema": {"type": "object", "properties": {
-         "path": {"type": "string", "description": "Путь файла относительно корня проекта."}},
+         "path": {"type": "string", "description": "Path of the file relative to the project root."}},
          "required": ["path"]}},
     {"name": "file_read",
-     "description": "Чтение фрагмента файла с номерами строк (до 200 строк за вызов).",
+     "description": "Read a slice of a file with line numbers (up to 200 lines per call).",
      "inputSchema": {"type": "object", "properties": {
-         "path": {"type": "string", "description": "Путь файла относительно корня проекта."},
-         "offset": {"type": "integer", "description": "1-based первая строка."},
-         "limit": {"type": "integer", "description": "Число строк, по умолчанию 120."}},
+         "path": {"type": "string", "description": "Path of the file relative to the project root."},
+         "offset": {"type": "integer", "description": "First line, 1-based."},
+         "limit": {"type": "integer", "description": "Number of lines, defaults to 120."}},
          "required": ["path"]}},
     {"name": "project_map",
-     "description": "Список индексированных файлов с резюме: язык, число строк, "
-                    "символы, импорты. Используйте, чтобы увидеть структуру проекта "
-                    "перед правкой кода.",
+     "description": "List of indexed files with a summary: language, line count, "
+                    "symbols, imports. Use it to see the project structure before editing code.",
      "inputSchema": {"type": "object", "properties": {
-         "path": {"type": "string", "description": "Фильтр по подстроке пути."},
-         "limit": {"type": "integer", "description": "Число файлов, по умолчанию 40."}}}},
+         "path": {"type": "string", "description": "Filter by path substring."},
+         "limit": {"type": "integer", "description": "Number of files, defaults to 40."}}}},
     {"name": "facts_search",
-     "description": "Поиск по памяти проекта (memory\\*.md): решения, договоренности, "
-                    "заметки о коде и разговорах. Один bullet = один факт.",
+     "description": "Search over project memory (memory/*.md): decisions, conventions, "
+                    "notes about code. One bullet = one fact.",
      "inputSchema": {"type": "object", "properties": {
-         "query": {"type": "string", "description": "Запрос."},
-         "topic": {"type": "string", "description": "Тема — имя файла memory/<topic>.md."},
-         "k": {"type": "integer", "description": "Число результатов, по умолчанию 5."}},
+         "query": {"type": "string", "description": "Query."},
+         "topic": {"type": "string", "description": "Topic: the name of memory/<topic>.md."},
+         "k": {"type": "integer", "description": "Number of results, defaults to 5."}},
          "required": ["query"]}},
     {"name": "facts_add",
-     "description": "Записать факт в память проекта одной строкой в нужную тему.",
+     "description": "Write a fact into project memory. One bullet = one fact.",
      "inputSchema": {"type": "object", "properties": {
-         "text": {"type": "string", "description": "Факт: точные единицы и решения."},
-         "topic": {"type": "string", "description": "Тема; новая тема создаётся, если имя не найдено."}},
+         "text": {"type": "string", "description": "Fact text: a decision or convention."},
+         "topic": {"type": "string", "description": "Topic; a new topic file is created when the name is unknown."}},
          "required": ["text"]}},
     {"name": "index_rebuild",
-     "description": "Перестроить индекс кода по корню проекта (изменённые файлы) или "
-                    "полностью (force=true). Вызывайте после большой правки кода.",
+     "description": "Rebuild the code index under the project root (changed files) or "
+                    "completely (force=true). Call it after a large code change.",
      "inputSchema": {"type": "object", "properties": {
-         "path": {"type": "string", "description": "Подпапка для частичной перестройки."},
-         "force": {"type": "boolean", "description": "Полная перестройка, включая эмбеддинги."}}}},
+         "path": {"type": "string", "description": "Subdirectory for a partial rebuild."},
+         "force": {"type": "boolean", "description": "Full rebuild, including embeddings."}}}},
     {"name": "index_stats",
-     "description": "Состояние индекса: число фактов, файлов, символов, вызовов и языки.",
+     "description": "Index state: number of facts, files, symbols, calls and languages.",
      "inputSchema": {"type": "object", "properties": {}}},
 ]
 
 
 def root():
-    """Корень кода — рабочая директория процесса (cwd сессии harness)."""
+    """The code root is the process working directory (the harness session cwd)."""
     return os.getcwd()
 
 
 def open_db():
-    """Индекс под текущий корень (cwd процесса): свой файл в config.INDEX_DIR.
+    """Index for the current root (the process cwd): one file under config.INDEX_DIR.
 
-    Каждый корень кода хранит отдельный индекс, смена cwd не трогает индексы
-    других проектов; неизменённые файлы пропускаются по sha256. Факты
-    читаются из config.MEMORY_DIR в файл каждого корня (источник один).
-    reset_code нужен только если в файле лежит код другого корня — случай
-    одного общего файла через SEMANTIC_MEMORY_DB.
+    Every root keeps its own index, so changing cwd does not touch indexes of other
+    projects. reset_code is only needed when the file holds code from a different
+    root — the case of one shared file via SEMANTIC_MEMORY_DB.
     """
     rt = root()
     con = db.connect(config.db_path(rt))
     if db.meta_get(con, "root") != rt:
         codeindex.reset_code(con)
     codeindex.index_root(con, rt)
-    facts.rebuild_facts(con)  # инкрементально: эмбеддинги только для изменённых тем
+    facts.rebuild_facts(con)  # incremental: embeddings only for changed topics
     return con
 
 
@@ -128,12 +125,12 @@ def _fmt_symbol(s):
 
 
 def _norm_path(path):
-    """Аргумент пути → относительный вид со «/»: Windows-слэши и абсолютный путь корня."""
+    """Path argument → relative form with "/": Windows separators and the absolute root."""
     p = str(path).replace("\\", "/")
     base = root().replace("\\", "/").rstrip("/") + "/"
     if p.lower().startswith(base.lower()):
         p = p[len(base):]
-    return p.lstrip("/")
+    return p
 
 
 def call_tool(con, name, args):
@@ -145,8 +142,8 @@ def call_tool(con, name, args):
                                      int(args.get("k") or 8),
                                      args.get("lang"), args.get("path"))
         if not hits:
-            return "Символов по запросу нет. Уточните имя или вызовите project_map."
-        parts = ["Найдено %d символов:" % len(hits)]
+            return "No symbols match the query. Refine the name or call project_map."
+        parts = ["Symbols found:"]
         for s in hits:
             parts.append(_fmt_symbol(s))
         return "\n".join(parts)
@@ -154,35 +151,35 @@ def call_tool(con, name, args):
     if name == "symbol":
         found = search.symbol_by_name(con, args.get("name", ""))
         if not found:
-            return "Символ %r не найден. Попробуйте code_search." % args.get("name")
+            return "Symbol %r not found. Try code_search." % args.get("name")
         parts = []
         for s in found:
             parts.append(_fmt_symbol(s))
             if args.get("body", True):
                 body = search.symbol_body(con, s["id"])
                 if body:
-                    parts.append("    тело:\n" + _numbered(body["body"], s["start"]))
+                    parts.append("    body:\n" + _numbered(body["body"], s["start"]))
         return "\n".join(parts)
 
     if name == "callers":
         rows = search.callers(con, args.get("name", ""))
         if not rows:
-            return "Вызовов %r в индексе нет." % args.get("name")
-        return "Вызывается из:\n" + "\n".join(
+            return "Nothing calls %r in the index." % args.get("name")
+        return "Called from:\n" + "\n".join(
             "  %s:%d  %s [%s]" % (r["file"], r["line"], r["qual"], r["kind"])
             for r in rows)
 
     if name == "callees":
         names = search.callees(con, args.get("name", ""))
         if not names:
-            return "В теле %r вызовов нет." % args.get("name")
-        return "Вызывает: " + ", ".join(names)
+            return "%r makes no calls." % args.get("name")
+        return "Calls: " + ", ".join(names)
 
     if name == "references":
         rows = search.references(con, args.get("name", ""))
         if not rows:
-            return "Имя %r встречается только вне индексированных файлов." % args.get("name")
-        return "Использование:\n" + "\n".join(
+            return "%r is not referenced in indexed files." % args.get("name")
+        return "Used in:\n" + "\n".join(
             "  %s:%d" % (r["file"], r["line"]) for r in rows)
 
     if name == "file_outline":
@@ -191,8 +188,8 @@ def call_tool(con, name, args):
             "SELECT qual, kind, start, end, sig FROM sym WHERE file = ? "
             "ORDER BY start", (rp,)).fetchall()
         if not rows:
-            return "Файл %r не индексирован или символов нет." % rp
-        return "Оглавление %s:\n" % rp + "\n".join(
+            return "File %r is not indexed." % rp
+        return "Outline of %s:\n" % rp + "\n".join(
             "  %d-%d  %s [%s]  %s" % (r[2], r[3], r[0], r[1], (r[4] or "")[:120])
             for r in rows)
 
@@ -200,36 +197,36 @@ def call_tool(con, name, args):
         rp = args.get("path", "")
         full = os.path.join(root(), rp)
         if not os.path.isfile(full):
-            return "Файл %r не найден." % rp
+            return "File %r not found." % rp
         with open(full, "r", encoding="utf-8", errors="replace") as f:
             lines = f.read().splitlines()
         off = max(1, int(args.get("offset") or 1))
         limit = min(int(args.get("limit") or 120), 200)
         chunk = lines[off - 1:off - 1 + limit]
-        return "%s (%d строк, показаны %d-%d)\n" % (rp, len(lines), off, off + len(chunk) - 1) \
+        return "%s (%d lines, showing %d-%d)\n" % (rp, len(lines), off, off + len(chunk) - 1) \
             + _numbered("\n".join(chunk), off)
 
     if name == "project_map":
         rows = search.file_map(con, args.get("path"), int(args.get("limit") or 40))
         if not rows:
-            return "Файлов нет. Вызовите index_rebuild."
-        return "Файлы проекта:\n" + "\n".join(
-            "  %s (%s, %d строк) — %s" % (r["path"], r["lang"], r["lines"], r["summary"])
+            return "No files in the index. Call index_rebuild."
+        return "Project files:\n" + "\n".join(
+            "  %s (%s, %d lines) — %s" % (r["path"], r["lang"], r["lines"], r["summary"])
             for r in rows)
 
     if name == "facts_search":
         hits = search.search_facts(con, args.get("query", ""),
                                    int(args.get("k") or 5), args.get("topic"))
         if not hits:
-            return "Фактов по запросу нет."
-        return "Факты:\n" + "\n".join(
+            return "No facts match the query."
+        return "Facts:\n" + "\n".join(
             "  #%s:%d (score %.4f) %s" % (h["topic"], h["num"], h["score"], h["text"])
             for h in hits)
 
     if name == "facts_add":
         topic = facts.append_fact(con, args.get("text", ""), args.get("topic"))
         n, changed = facts.rebuild_facts(con)
-        return "Записан факт в тему %s; документов %d, перестроено %d." % (
+        return "Fact written to topic %s; %d documents, %d rebuilt." % (
             topic, n, len(changed))
 
     if name == "index_rebuild":
@@ -238,18 +235,18 @@ def call_tool(con, name, args):
         force = bool(args.get("force"))
         paths = codeindex.iter_code(base)
         files, symbols, changed = codeindex.index_paths(con, root(), paths, force=force)
-        return "Индекс: файлов %d, символов %d, перестроено %d (%s)." % (
-            files, symbols, len(changed), ", ".join(changed[:12]) or "без изменений")
+        return "Index: %d files, %d symbols, %d rebuilt (%s)." % (
+            files, symbols, len(changed), ", ".join(changed[:12]) or "no changes")
 
     if name == "index_stats":
         st = search.stats(con)
-        return "Индекс semantic-memory\n  корень: %s\n  факты: %d\n  файлы: %d\n" \
-               "  символы: %d\n  вызовы: %d\n  языки: %s\n  эмбеддинги: %s" % (
-                   st["root"], st["facts"], st["files"], st["symbols"], st["calls"],
-                   ", ".join("%s:%d" % (k, v) for k, v in st["languages"].items()),
-                   "включены" if st["embedded"] else "выключены")
+        return "semantic-memory index\n  root: %s\n  files: %d\n  symbols: %d\n" \
+               "  calls: %d\n  languages: %s\n  embeddings: %s" % (
+            st["root"], st["files"], st["symbols"], st["calls"],
+            ", ".join("%s:%d" % (k, v) for k, v in st["languages"].items()),
+            "on" if st["embedded"] else "off")
 
-    raise ValueError("неизвестный инструмент %r" % name)
+    raise ValueError("unknown tool %r" % name)
 
 
 def _numbered(text, start):
@@ -260,7 +257,7 @@ def _numbered(text, start):
 
 
 def _stream():
-    """Бинарный поток stdout; на обёртках (capture, Jupyter) его нет."""
+    """Raw byte stream of stdout; wrappers (captured output, notebooks) have none."""
     return getattr(sys.stdout, "buffer", None)
 
 
@@ -321,7 +318,7 @@ def serve():
                              "isError": False})
             else:
                 _send({"jsonrpc": "2.0", "id": req.get("id"),
-                       "error": {"code": -32601, "message": "метод не поддерживается"}})
+                       "error": {"code": -32601, "message": "method not supported"}})
         except Exception as exc:
             _reply(req, error=exc)
 

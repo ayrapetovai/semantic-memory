@@ -1,7 +1,7 @@
-r"""Поиск: гибрид FTS5 (точные токены) + векторы (смысл), слияние по рангам.
+r"""Search: hybrid FTS5 (exact tokens) + vectors (meaning), merged by rank.
 
-Две области — факты (memory\*.md) и символы кода — ранжируются отдельно и не
-смешиваются: LLM сначала находит код, потом читает символ целиком.
+Two areas — facts (memory\*.md) and code symbols — are ranked separately and never
+mixed: the LLM finds the code first, then reads a symbol in full.
 """
 
 import re
@@ -39,7 +39,7 @@ def _fts(con, table, query, limit, where=None, args=None):
 
 
 def _fts_count(con, table, query, limit, where=None, args=None):
-    """Рейтинг без BM25: сколько токенов встречается в документе."""
+    """Ranking without BM25: how many tokens appear in the document."""
     tokens = query_tokens(query)
     if not tokens:
         return []
@@ -75,7 +75,7 @@ def _vec(con, table, query, limit, where=None, args=None):
 
 
 def merge(ranks, window=60):
-    """ reciprocal rank fusion: 1/(window+rank) по каждому списку."""
+    """Reciprocal rank fusion: 1/(window+rank) over each list."""
     scores = {}
     for lst in ranks:
         for rank, rid in enumerate(lst, start=1):
@@ -141,7 +141,7 @@ def search_symbols(con, query, k=8, lang=None, path_filter=None, use_embed=True)
 
 
 def symbol_by_name(con, name, k=8):
-    """Точное имя или qual → символы; сначала точные совпадения."""
+    """Exact name or qual → symbols; exact matches first."""
     name = name.strip()
     rows = con.execute(
         "SELECT id, file, qual, kind, start, end, sig, doc FROM sym "

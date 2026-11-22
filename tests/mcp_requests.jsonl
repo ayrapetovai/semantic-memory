@@ -4,5 +4,5 @@
 {"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"code_search","arguments":{"query":"hybrid merge ranking","k":3}}}
 {"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"symbol","arguments":{"name":"merge"}}}
 {"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"callers","arguments":{"name":"merge"}}}
-{"jsonrpc":"2.0","id":5,"method":"tools/call","params":{"name":"facts_search","arguments":{"query":"кулер","topic":"hardware","k":2}}}
+{"jsonrpc":"2.0","id":5,"method":"tools/call","params":{"name":"facts_search","arguments":{"query":"embedding bug symbol vectors","topic":"codeindex","k":2}}}
 {"jsonrpc":"2.0","id":6,"method":"tools/call","params":{"name":"index_stats"}}

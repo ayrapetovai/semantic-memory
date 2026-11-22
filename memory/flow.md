@@ -1,5 +1,5 @@
 # flow
 
-## Поток решений
+## Decision stream
 
-- MCP сервер semantic-memory запускается под Windows: .venv\Scripts\python.exe run_mcp.py; в ~/.config/opencode/opencode.jsonc блок mcp.servers с type local и одним command; cwd не указывать, pool не ставить.
+- The semantic-memory MCP server runs under Windows: `.venv\Scripts\python.exe run_mcp.py`; in `~/.config/opencode/opencode.jsonc` the `mcp.servers` block with `type: local` and a single `command`; do not set `cwd`, do not set `pool`.

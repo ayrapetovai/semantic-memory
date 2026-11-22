@@ -1,14 +1,14 @@
-r"""CLI semantic-memory.
+r"""semantic-memory CLI.
 
-  python -m semantic_memory.cli index [path] [--force]     индекс кода по корню
-  python -m semantic_memory.cli serve                      MCP-сервер на stdio
+  python -m semantic_memory.cli index [path] [--force]     index code under the root
+  python -m semantic_memory.cli serve                      MCP server on stdio
   python -m semantic_memory.cli code "hybrid search" [-k 8] [--lang python] [--path sub]
-  python -m semantic_memory.cli symbol Class.method        тело символа
+  python -m semantic_memory.cli symbol Class.method        symbol body
   python -m semantic_memory.cli callers name | callees name | refs name
-  python -m semantic_memory.cli outline path               карта файла
-  python -m semantic_memory.cli map [--path sub]           файлы проекта
-  python -m semantic_memory.cli facts "кулер" [--topic hardware]
-  python -m semantic_memory.cli add "факт" [--topic flow]
+  python -m semantic_memory.cli outline path               file outline
+  python -m semantic_memory.cli map [--path sub]           project files
+  python -m semantic_memory.cli facts "cooling fan" [--topic hardware]
+  python -m semantic_memory.cli add "a fact" [--topic flow]
   python -m semantic_memory.cli stats
 """
 
@@ -27,16 +27,16 @@ def root(args):
 def main(argv=None):
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding="utf-8")
-    parser = argparse.ArgumentParser(description="semantic-memory: память фактов + индекс кода")
+    parser = argparse.ArgumentParser(description="semantic-memory: fact memory + code index")
     parser.add_argument("command", help="index|serve|code|symbol|callers|callees|refs|outline|map|facts|add|stats")
     parser.add_argument("arg", nargs="?", default="")
-    parser.add_argument("--root", default=None, help="корень кода проекта (по умолчанию cwd)")
-    parser.add_argument("-k", type=int, default=8, help="число результатов")
-    parser.add_argument("--topic", default=None, help="тема фактов")
-    parser.add_argument("--lang", default=None, help="фильтр по языку")
-    parser.add_argument("--path", default=None, help="фильтр по подстроке пути")
-    parser.add_argument("--no-embed", action="store_true", help="поиск без векторов")
-    parser.add_argument("--force", action="store_true", help="полная перестройка индекса")
+    parser.add_argument("--root", default=None, help="code root of the project (defaults to cwd)")
+    parser.add_argument("-k", type=int, default=8, help="number of results")
+    parser.add_argument("--topic", default=None, help="fact topic")
+    parser.add_argument("--lang", default=None, help="filter by language")
+    parser.add_argument("--path", default=None, help="filter by path substring")
+    parser.add_argument("--no-embed", action="store_true", help="search without vectors")
+    parser.add_argument("--force", action="store_true", help="full index rebuild")
     args = parser.parse_args(argv)
 
     con = db.connect(config.db_path(root(args)))
@@ -53,31 +53,31 @@ def main(argv=None):
         removed = 0
         if not args.arg:
             files, symbols, changed, removed = codeindex.index_root(con, root(args), force=args.force)
-        print("индекс: файлов %d, символов %d, перестроено %d, удалено %d"
+        print("index: %d files, %d symbols, rebuilt %d, removed %d"
               % (files, symbols, len(changed), removed))
         return 0
 
     if cmd == "stats":
         st = search.stats(con)
-        print("корень: %s" % st["root"])
-        print("факты: %d · файлы: %d · символы: %d · вызовы: %d"
+        print("root: %s" % st["root"])
+        print("facts: %d · files: %d · symbols: %d · calls: %d"
               % (st["facts"], st["files"], st["symbols"], st["calls"]))
-        print("языки: %s" % ", ".join("%s:%d" % kv for kv in st["languages"].items()))
-        print("эмбеддинги: %s · модель: %s" %
-              ("включены" if st["embedded"] else "выключены", config.MODEL_NAME))
+        print("languages: %s" % ", ".join("%s:%d" % kv for kv in st["languages"].items()))
+        print("embeddings: %s · model: %s" %
+              ("on" if st["embedded"] else "off", config.MODEL_NAME))
         return 0
 
     if cmd == "add":
         topic = facts.append_fact(con, args.arg, args.topic)
         n, changed = facts.rebuild_facts(con)
-        print("записан факт в %s; документов %d, перестроено %d" % (topic, n, len(changed)))
+        print("fact written to %s; %d documents, rebuilt %d" % (topic, n, len(changed)))
         return 0
 
     if cmd == "facts":
         hits = search.search_facts(con, args.arg, args.k, args.topic,
                                    use_embed=not args.no_embed)
         if not hits:
-            print("фактов нет")
+            print("no facts")
             return 0
         for h in hits:
             print("#%s:%d  %.4f  %s" % (h["topic"], h["num"], h["score"], h["text"]))
@@ -87,7 +87,7 @@ def main(argv=None):
         hits = search.search_symbols(con, args.arg, args.k, args.lang, args.path,
                                      use_embed=not args.no_embed)
         if not hits:
-            print("символов нет")
+            print("no symbols")
             return 0
         for s in hits:
             print("%s:%d-%d  %s [%s]  %.4f" %
@@ -99,7 +99,7 @@ def main(argv=None):
     if cmd == "symbol":
         found = search.symbol_by_name(con, args.arg)
         if not found:
-            print("символ не найден")
+            print("symbol not found")
             return 1
         for s in found[:3]:
             print("%s:%d-%d  %s [%s]" % (s["file"], s["start"], s["end"], s["qual"], s["kind"]))
@@ -112,13 +112,13 @@ def main(argv=None):
     if cmd in ("callers", "callees", "refs"):
         if cmd == "callers":
             rows = search.callers(con, args.arg)
-            print("вызывается из:")
+            print("called from:")
             for r in rows:
                 print("  %s:%d  %s [%s]" % (r["file"], r["line"], r["qual"], r["kind"]))
         elif cmd == "callees":
-            print("вызывает: " + ", ".join(search.callees(con, args.arg)))
+            print("calls: " + ", ".join(search.callees(con, args.arg)))
         else:
-            print("использование:")
+            print("used in:")
             for r in search.references(con, args.arg):
                 print("  %s:%d" % (r["file"], r["line"]))
         return 0
@@ -127,7 +127,7 @@ def main(argv=None):
         rows = con.execute("SELECT qual, kind, start, end, sig FROM sym WHERE file = ? "
                            "ORDER BY start", (args.arg,)).fetchall()
         if not rows:
-            print("файл не проиндексирован")
+            print("file not indexed")
             return 1
         for r in rows:
             print("  %d-%d  %s [%s]  %s" % (r[2], r[3], r[0], r[1], (r[4] or "")[:100]))
@@ -135,10 +135,10 @@ def main(argv=None):
 
     if cmd == "map":
         for f in search.file_map(con, args.path, args.k):
-            print("  %s (%s, %d строк) — %s" % (f["path"], f["lang"], f["lines"], f["summary"]))
+            print("  %s (%s, %d lines) — %s" % (f["path"], f["lang"], f["lines"], f["summary"]))
         return 0
 
-    print("неизвестная команда: %s" % cmd)
+    print("unknown command: %s" % cmd)
     return 1
 
 

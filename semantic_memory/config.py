@@ -1,9 +1,9 @@
-r"""Пути, модель и лимиты semantic-memory.
+r"""Paths, model and limits for semantic-memory.
 
-Корень проекта — папка semantic-memory: здесь .indexes (файл индекса под каждый корень кода)
-и .models (кэш ONNX-модели, не в git). Факты читаются из memory\*.md под корнем
-проекта — единственный источник памяти; путь можно переопределить
-SEMANTIC_MEMORY_MEMORY_DIR.
+The project root is the semantic-memory folder: here live .indexes (one index file
+per code root) and .models (ONNX model cache, not in git). Facts are read from
+memory\*.md under that root — the single source of memory; the path can be
+overridden with SEMANTIC_MEMORY_MEMORY_DIR.
 """
 
 import hashlib
@@ -11,15 +11,15 @@ import os
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 MEMORY_DIR = os.environ.get("SEMANTIC_MEMORY_MEMORY_DIR") or os.path.join(ROOT, "memory")
-DB = os.environ.get("SEMANTIC_MEMORY_DB")  # override: один общий файл на все корни
+DB = os.environ.get("SEMANTIC_MEMORY_DB")  # override: one shared file for all roots
 INDEX_DIR = os.environ.get("SEMANTIC_MEMORY_INDEX_DIR") or os.path.join(ROOT, ".indexes")
 
 
 def db_path(root):
-    """Файл индекса под корень: .indexes/<sha256 корня>.db.
+    """Index file per code root: .indexes/<sha256 of root>.db.
 
-    Так каждый проект хранит свой индекс и смена cwd не трогает чужие.
-    SEMANTIC_MEMORY_DB задаёт один общий файл для всех корней.
+    Every project keeps its own index, so changing cwd does not touch other ones.
+    SEMANTIC_MEMORY_DB sets one shared file for all roots.
     """
     if DB:
         return DB
@@ -32,12 +32,12 @@ MODEL_NAME = os.environ.get(
 )
 
 DEFAULT_TOPIC = "flow"
-TOPIC_SPAN = 1000000          # стабильный диапазон id темы фактов
-SYMBOL_ID_BASE = 10_000_000   # id символов кода начинаются после фактов
-MAX_TOPIC_BULLETS = 200       # cap на число bullets в файле темы (старые удаляются)
+TOPIC_SPAN = 1000000          # stable id range for a fact topic
+SYMBOL_ID_BASE = 10_000_000   # code symbol ids start after the fact ids
+MAX_TOPIC_BULLETS = 200       # cap on bullets per topic file (oldest ones are dropped)
 
-MAX_EMBED_CHARS = 900         # эмбеддинг: сигнатура + docstring + начало тела
-MAX_BODY_CHARS = 4000         # тело символа, возвращаемое LLM
+MAX_EMBED_CHARS = 900         # embedding: signature + docstring + start of body
+MAX_BODY_CHARS = 4000         # symbol body returned to the LLM
 MAX_FILE_BYTES = 220_000
 MAX_EXTENT_LINES = 400
 

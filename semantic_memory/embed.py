@@ -1,8 +1,8 @@
-r"""Эмбеддинги: fastembed + MiniLM (multilingual), кэш в config.MODEL_CACHE.
+r"""Embeddings: fastembed + MiniLM (multilingual), cached in config.MODEL_CACHE.
 
-Векторы хранятся как float32 BLOB; cosine считается numpy-матрицей, если numpy
-есть, иначе чистым Python. Без fastembed функции возвращают None и поиск
-работает только текстом.
+Vectors are stored as float32 BLOBs; cosine is computed with a numpy matrix when
+numpy is available, otherwise in pure Python. Without fastembed these functions
+return None and search works on text only.
 """
 
 import array
@@ -31,7 +31,7 @@ def model():
 
 
 def embed(texts):
-    """Векторы для списка текстов; None, если библиотека недоступна."""
+    """Vectors for a list of texts; None when the library is unavailable."""
     if not texts:
         return []
     try:
@@ -54,7 +54,7 @@ def unpack(blob):
 
 
 def cosine(query, rows):
-    """rows: [(id, blob)] → [(score, id)] по косинусу с query."""
+    """rows: [(id, blob)] → [(score, id)] ranked by cosine similarity to query."""
     if not rows:
         return []
     try:

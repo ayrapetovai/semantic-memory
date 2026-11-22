@@ -1,6 +1,6 @@
 # workflow
 
-## Поток решений
+## Decision stream
 
-- Workflow semantic-memory: одна рабочая сессия агента в одном репозитории — явный слой (MCP-инструменты: code_search/symbol/callers/callees/references/file_outline/file_read/project_map/facts_search/facts_add) + автоматический слой плагина (recall→<memory> в system, захват реплик в chat, distill на конец хода, reindex после правок). Источник истины — memory/*.md в корне проекта
-- Ограничение workflow: коммит и любые правки файлов выполняются только после переключения на build-агент; в Plan mode git-записи не делается
+- semantic-memory workflow: one working agent session in one repository — an explicit layer (MCP tools: code_search/symbol/callers/callees/references/file_outline/file_read/project_map/facts_search/facts_add) + the automatic plugin layer (recall→`<memory>` in system, capture of turns into chat, distill at the end of a turn, reindex after edits). The source of truth is memory/*.md in the project root
+- Workflow limitation: a commit and any file edits are made only after switching to the build agent; git writes are not done in Plan mode

@@ -1,6 +1,6 @@
 # Makefile
 
-## Поток решений
+## Decision stream
 
-- Строки рецептов в Makefile должны начинаться с табуляции, а не пробелов: применённый патч добавил 7 пробелов, из-за чего make падал с 'missing separator'; рецепт main.o (строка 14) и правило clean: переведены на табуляцию.
-- Рецепты в Makefile требуют табуляции: строки рецепта с 7 пробелами вызывают «missing separator». После применения the_patch.patch строки рецепта main.o (строка 14) и правила clean были исправлены с пробелов на табы, сборка magpie восстановлена.
+- Recipe lines in a Makefile must start with a tab, not spaces: the applied patch added 7 spaces, which made `make` fail with 'missing separator'; the main.o recipe (line 14) and the `clean:` rule were converted to tabs.
+- Makefile recipes require tabs: recipe lines with 7 spaces cause "missing separator". After applying the_patch.patch the main.o recipe line (line 14) and the `clean` rule were fixed from spaces to tabs, the magpie build is restored.

@@ -1,9 +1,9 @@
-r"""Разбор кода на символы, вызовы и ссылки.
+r"""Parsing code into symbols, calls and references.
 
-Python — через ast: функции, классы, методы, вложенные def, вызовы внутри
-символа, имена, используемые в файле. Остальные языки — регулярные выражения по
-строке определения и подсчёт скобок до конца тела; это приближение, но даёт
-LLM карту файлов и переход «кто вызывает что».
+Python goes through ast: functions, classes, methods, nested defs, calls inside a
+symbol, names used in the file. Other languages use regexes on the definition line
+and brace counting to the end of the body; it is an approximation, but it gives the
+LLM a file map and the "who calls what" step.
 """
 
 import ast
@@ -102,7 +102,7 @@ class FileParse:
         self.lang = lang
         self.lines = lines
         self.symbols = []
-        self.calls = []      # (qual или None, callee, line)
+        self.calls = []      # (qual or None, callee, line)
         self.refs = []       # (name, line)
         self.imports = []
 
@@ -111,11 +111,11 @@ def language(path):
     return config.CODE_EXT.get(os.path.splitext(path)[1].lower())
 
 
-import os  # noqa: E402  (используется в language)
+import os  # noqa: E402  (used by language)
 
 
 def split_identifiers(name):
-    """camelCase / snake_case → токены для текстового поиска."""
+    """camelCase / snake_case → tokens for the text search."""
     parts = re.split(r"[_.\-]+", name)
     out = []
     for p in parts:
@@ -240,7 +240,7 @@ def _parse_generic(fp):
 
 
 def _qualify_nested(fp):
-    """Методы внутри extent класса получают qual Class.method."""
+    """Methods inside a class extent get the qual Class.method."""
     classes = [s for s in fp.symbols if s.kind in ("class", "type")]
     for sym in fp.symbols:
         if sym.kind not in ("function", "method"):

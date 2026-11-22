@@ -1,8 +1,8 @@
-"""Запуск MCP-сервера из любой директории: python /path/to/semantic-memory/run_mcp.py
+"""Run the MCP server from any directory: python /path/to/semantic-memory/run_mcp.py
 
-`python -m semantic_memory.mcp` требует cwd внутри semantic-memory; этот скрипт
-добавляет папку проекта в sys.path, поэтому harness может запустить его с cwd
-сессии — сервер индексирует именно её.
+`python -m semantic_memory.mcp` requires cwd inside semantic-memory; this script
+adds the project folder to sys.path, so the harness can start it with the session
+cwd — the server indexes exactly that directory.
 """
 
 import os

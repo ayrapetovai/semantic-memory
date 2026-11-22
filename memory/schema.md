@@ -1,5 +1,5 @@
 # schema
 
-## Поток решений
+## Decision stream
 
-- Эмбеддинга файлов нет: схема содержит только `fact_vec` и `sym_vec`; `file.summary` хранится текстом и участвует только в `project_map`, не в FTS и не в векторах — семантического поиска по файлам нет.
+- There is no file embedding: the schema contains only `fact_vec` and `sym_vec`; `file.summary` is stored as text and participates only in `project_map`, not in FTS and not in vectors — there is no semantic search over files.

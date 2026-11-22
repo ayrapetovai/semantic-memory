@@ -1,7 +1,7 @@
-r"""Факты проекта: memory\<тема>.md, один bullet = один факт.
+r"""Project facts: memory\<topic>.md, one bullet = one fact.
 
-Формат: "-" — документ, "##" — раздел, который входит в
-текст факта. Индекс перестраивается только для изменённых тем (sha256 по содержимому).
+Format: "-" is a document, "##" is a section whose name is included in the fact
+text. The index is rebuilt only for changed topics (sha256 over the content).
 """
 
 import hashlib
@@ -10,7 +10,7 @@ import re
 
 from . import config, db, embed
 
-AUTO = "## Поток решений"
+AUTO = "## Decision stream"
 TOKEN_RE = re.compile(r"[A-Za-zА-ЯА-ЯЁё0-9]+")
 
 
@@ -23,7 +23,7 @@ def topic_files():
 
 
 def parse_file(path):
-    """Файл темы → [(num, text)]; num — позиция bullet в файле."""
+    """Topic file → [(num, text)]; num is the bullet position in the file."""
     docs, heading = [], ""
     with open(path, "r", encoding="utf-8") as f:
         for line in f.read().splitlines():
@@ -64,7 +64,7 @@ def purge_topic(con, topic):
 
 
 def rebuild_facts(con, force=False):
-    """Индекс фактов; эмбеддинги только для изменённых тем. → (n, changed)."""
+    """Fact index; embeddings only for changed topics. Returns (n, changed)."""
     by_topic = {}
     for topic, num, text in read_entries():
         by_topic.setdefault(topic, []).append((num, text))
@@ -99,7 +99,7 @@ def rebuild_facts(con, force=False):
 
 
 def _trim_bullets(content):
-    """Удалить старые bullets сверх config.MAX_TOPIC_BULLETS (новые остаются)."""
+    """Drop the oldest bullets beyond config.MAX_TOPIC_BULLETS (new ones stay)."""
     lines = content.splitlines()
     bullets = [i for i, l in enumerate(lines) if l.startswith("- ")]
     excess = len(bullets) - config.MAX_TOPIC_BULLETS
@@ -149,4 +149,4 @@ def resolve_topic(con, name):
         return hits[0]
     if re.fullmatch(r"[A-Za-z0-9_-]+", name):
         return name
-    raise ValueError("тема %r не найдена; известные: %s" % (name, ", ".join(names)))
+    raise ValueError("topic %r not found; known topics: %s" % (name, ", ".join(names)))

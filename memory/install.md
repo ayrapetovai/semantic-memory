@@ -1,5 +1,5 @@
 # install
 
-## Поток решений
+## Decision stream
 
-- Пип-пакета нет (pyproject.toml/setup.py отсутствуют): установка = git clone + python init.py, поэтому npm-публикация или pyproject — открытый вопрос доставки
+- There is no pip package (no pyproject.toml/setup.py): installation = `git clone` + `python init.py`, so npm publishing or pyproject remains an open delivery question

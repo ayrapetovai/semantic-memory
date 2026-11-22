@@ -1,5 +1,5 @@
 # commit
 
-## Поток решений
+## Decision stream
 
-- Объём коммита памяти решён: коммитятся все memory/*.md целиком (chat.md, plugin.md, magpie.md, Makefile.md, workflow.md, install.md, schema.md, codeindex-bug.md, index-stats.md), .gitignore не правится
+- Scope of the memory commit decided: all memory/*.md are committed in full (chat.md, plugin.md, magpie.md, Makefile.md, workflow.md, install.md, schema.md, codeindex-bug.md, index-stats.md), .gitignore is not changed

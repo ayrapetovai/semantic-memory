@@ -1,15 +1,15 @@
-r"""NDJSON-мост для плагинов OpenCode: строка запроса → строка JSON-ответа.
+r"""NDJSON bridge for OpenCode plugins: one request line → one JSON answer line.
 
-Запуск: python -m semantic_memory.bridge
-Запросы:
+Run: python -m semantic_memory.bridge
+Requests:
   {"cmd": "ping"}
   {"cmd": "recall", "query": "...", "k": 5, "topic": "..."}
   {"cmd": "add", "text": "...", "topic": "..."}
   {"cmd": "reindex", "path": "...", "force": false}
   {"cmd": "stats"}
-Поле id (если передано) возвращается с ответом — клиент сопоставляет строки.
-Ошибки — {"ok": false, "error": "..."}; процесс не завершается от плохой строки.
-Код индексируется и факты перестраиваются при каждом запросе (как в MCP).
+The id field (when supplied) comes back with the answer — the client matches lines.
+Errors are {"ok": false, "error": "..."}; a bad line never ends the process.
+Code is indexed and facts rebuilt on every request (same as in MCP).
 """
 
 import json
@@ -51,7 +51,7 @@ def handle(req):
         return {"files": files, "symbols": symbols, "changed": changed}
     if cmd == "stats":
         return _stats(con)
-    raise ValueError("неизвестная команда: %s" % cmd)
+    raise ValueError("unknown command: %s" % cmd)
 
 
 def serve(stdin=None, stdout=None):

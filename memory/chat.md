@@ -1,6 +1,6 @@
 # chat
 
-## Поток решений
+## Decision stream
 
 - Is the file ~/.opencode/plugins/semantic-memory/index.ts included to the project?
 - Whene the user installs this MCP how the file /home/artem/code/semantic-memory/.opencode/plugins/semantic-memory/index.ts will get to tis place?
@@ -13,3 +13,5 @@ I did not understand, when the MCP is being installing, how files - /home/artem/
 - Check memory, do we have any projects with file enbedding?
 - commit the project
 - ok
+- Thranslate Russian language in this project to Egnlish, including memory.
+- Thranslate Russian language in this project to English, including memory.

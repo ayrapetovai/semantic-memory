@@ -1,8 +1,8 @@
-r"""Схема SQLite: факты (topics), символы кода, вызовы, ссылки, эмбеддинги.
+r"""SQLite schema: facts (topics), code symbols, calls, references, embeddings.
 
-id фактов — в диапазоне темы (config.TOPIC_SPAN), id символов — с
-config.SYMBOL_ID_BASE. FTS5 и векторы для обоих типов, но в отдельных таблицах,
-чтобы поиск по коду не мешал поиску по фактам.
+Fact ids live inside the topic range (config.TOPIC_SPAN), symbol ids start at
+config.SYMBOL_ID_BASE. FTS5 and vectors exist for both kinds, but in separate
+tables, so code search does not interfere with fact search.
 """
 
 import os

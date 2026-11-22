@@ -1,5 +1,5 @@
 # index-stats
 
-## Поток решений
+## Decision stream
 
-- Эмбеддинги включены (`embedded=1`) в двух корнях: semantic-memory — 16 файлов, 101 символ, 89 векторов символов, 31 факт; magpie — 11 файлов, 91 символ, 86 векторов, 27 фактов.
+- Embeddings are on (`embedded=1`) in two roots: semantic-memory — 16 files, 101 symbols, 89 symbol vectors, 31 facts; magpie — 11 files, 91 symbols, 86 vectors, 27 facts.

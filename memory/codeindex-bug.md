@@ -1,5 +1,5 @@
 # codeindex-bug
 
-## Поток решений
+## Decision stream
 
-- Баг в `codeindex.index_paths` (`idx = symbols + i`): позиция удваивается и уходит за конец `vectors`, из-за этого хвост символов каждого файла теряет вектор (12 символов в semantic-memory, 5 в magpie), часть символов хранит вектор соседнего символа.
+- Bug in `codeindex.index_paths` (`idx = symbols + i`): the position is double-counted and runs past the end of `vectors`, so the tail symbols of every file lose their vector (12 symbols in semantic-memory, 5 in magpie); part of them store the vector of the neighbouring symbol.

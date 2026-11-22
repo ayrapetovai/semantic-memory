@@ -1,14 +1,14 @@
-r"""Bootstrap semantic-memory: venv, пакеты, кэш модели, индекс.
+r"""Bootstrap semantic-memory: venv, packages, model cache, index.
 
-  python init.py            создать .venv, поставить пакеты, собрать индекс
-  python init.py --check    только показать состояние, ничего не менять
-  python init.py --reindex  перестроить индекс целиком
+  python init.py            create .venv, install the packages, build the index
+  python init.py --check    only show the state, change nothing
+  python init.py --reindex  rebuild the index completely
 
-Кэш ONNX-модели лежит в .models (не в git); если его нет, fastembed скачивает
-модель при первом использовании. Корень кода для индекса — рабочая директория запуска
-init.py (или переменная SEMANTIC_MEMORY_ROOT, expanduser `~`); индекс — отдельный
-файл под корень в .indexes. Python в venv: Windows — .venv\Scripts\python.exe,
-Linux и macOS — .venv/bin/python.
+The ONNX model cache lives in .models (not in git); if it is missing, fastembed
+downloads the model on first use. The code root for the index is the working directory
+where init.py is run (or the SEMANTIC_MEMORY_ROOT variable, expanduser `~`); the index
+is a separate file per root in .indexes. Python in the venv: Windows —
+.venv\Scripts\python.exe, Linux and macOS — .venv/bin/python.
 """
 
 import os
@@ -43,7 +43,7 @@ def ensure_venv():
 
 
 def ensure_model_cache():
-    """Локальный кэш модели; если его нет — fastembed скачает при первом эмбеддинге."""
+    """Local model cache; if it is missing, fastembed downloads it on the first embedding."""
     return os.path.isdir(CACHE) and any(
         d.startswith("models--") for d in os.listdir(CACHE)
         if os.path.isdir(os.path.join(CACHE, d))
@@ -51,14 +51,14 @@ def ensure_model_cache():
 
 
 def check():
-    print("venv: %s" % ("есть" if os.path.exists(VENV_PY) else "нет"))
-    print("кэш модели: %s" % ("есть" if os.path.isdir(CACHE) and os.listdir(CACHE) else "нет"))
-    print("корень кода: %s" % code_root())
-    print("БД: %s" % config.db_path(code_root()))
+    print("venv: %s" % ("present" if os.path.exists(VENV_PY) else "missing"))
+    print("model cache: %s" % ("present" if os.path.isdir(CACHE) and os.listdir(CACHE) else "missing"))
+    print("code root: %s" % code_root())
+    print("db: %s" % config.db_path(code_root()))
 
 
 def reindex(force=False):
-    """Перестройка индекса — внутри venv, где стоят fastembed и numpy."""
+    """Index rebuild — inside the venv, where fastembed and numpy are installed."""
     py = VENV_PY if os.path.isfile(VENV_PY) else sys.executable
     code = (
         "import sys\nsys.path.insert(0, " + repr(ROOT) + ")\n"
@@ -67,9 +67,9 @@ def reindex(force=False):
         "files, symbols, changed, removed = codeindex.index_root(con, "
         + repr(code_root()) + ", force=" + repr(bool(force)) + ")\n"
         "n, topics = facts.rebuild_facts(con, force=" + repr(bool(force)) + ")\n"
-        "print('индекс: файлов %d, символов %d, перестроено %d, удалено %d'\n"
+        "print('index: %d files, %d symbols, %d rebuilt, %d removed'\n"
         "      % (files, symbols, len(changed), len(removed)))\n"
-        "print('факты: %d, темы: %s' % (n, ', '.join(topics)))\n"
+        "print('facts: %d, topics: %s' % (n, ', '.join(topics)))\n"
     )
     return run([py, "-c", code])
 
@@ -82,7 +82,7 @@ def main(argv=None):
     ensure_venv()
     ensure_model_cache()
     reindex(force="--reindex" in argv)
-    print("готово. MCP: %s %s (корень — cwd сессии)"
+    print("done. MCP: %s %s (the root is the session cwd)"
           % (VENV_PY, os.path.join(ROOT, "run_mcp.py")))
     return 0
 
