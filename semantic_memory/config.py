@@ -1,19 +1,16 @@
 r"""Пути, модель и лимиты semantic-memory.
 
 Корень проекта — папка semantic-memory: здесь .indexes (файл индекса под каждый корень кода)
-и .models (кэш ONNX-модели, не в git). Факты читаются из mem0-like\memory\*.md —
-это единственный источник памяти проекта; своя папка memory\ используется только
-если её нет (или задан SEMANTIC_MEMORY_MEMORY_DIR).
+и .models (кэш ONNX-модели, не в git). Факты читаются из memory\*.md под корнем
+проекта — единственный источник памяти; путь можно переопределить
+SEMANTIC_MEMORY_MEMORY_DIR.
 """
 
 import hashlib
 import os
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-CANONICAL_MEMORY = os.path.join(os.path.dirname(ROOT), "mem0-like", "memory")
-MEMORY_DIR = os.environ.get("SEMANTIC_MEMORY_MEMORY_DIR") or (
-    CANONICAL_MEMORY if os.path.isdir(CANONICAL_MEMORY) else os.path.join(ROOT, "memory")
-)
+MEMORY_DIR = os.environ.get("SEMANTIC_MEMORY_MEMORY_DIR") or os.path.join(ROOT, "memory")
 DB = os.environ.get("SEMANTIC_MEMORY_DB")  # override: один общий файл на все корни
 INDEX_DIR = os.environ.get("SEMANTIC_MEMORY_INDEX_DIR") or os.path.join(ROOT, ".indexes")
 

@@ -72,11 +72,11 @@ TOOLS = [
          "path": {"type": "string", "description": "Фильтр по подстроке пути."},
          "limit": {"type": "integer", "description": "Число файлов, по умолчанию 40."}}}},
     {"name": "facts_search",
-     "description": "Поиск по памяти проекта (memory\\*.md): решения, карточки железа, "
-                    "механики Strata, поток решений. Один bullet = один факт.",
+     "description": "Поиск по памяти проекта (memory\\*.md): решения, договоренности, "
+                    "заметки о коде и разговорах. Один bullet = один факт.",
      "inputSchema": {"type": "object", "properties": {
          "query": {"type": "string", "description": "Запрос."},
-         "topic": {"type": "string", "description": "Тема: hardware, game-design, flow."},
+         "topic": {"type": "string", "description": "Тема — имя файла memory/<topic>.md."},
          "k": {"type": "integer", "description": "Число результатов, по умолчанию 5."}},
          "required": ["query"]}},
     {"name": "facts_add",

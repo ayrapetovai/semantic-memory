@@ -4,15 +4,14 @@ r"""Bootstrap semantic-memory: venv, пакеты, кэш модели, инде
   python init.py --check    только показать состояние, ничего не менять
   python init.py --reindex  перестроить индекс целиком
 
-Кэш ONNX-модели копируется из ..\mem0-like\.models, если там есть MiniLM — так
-не нужен повторный download. Корень кода для индекса — рабочая директория запуска
+Кэш ONNX-модели лежит в .models (не в git); если его нет, fastembed скачивает
+модель при первом использовании. Корень кода для индекса — рабочая директория запуска
 init.py (или переменная SEMANTIC_MEMORY_ROOT, expanduser `~`); индекс — отдельный
 файл под корень в .indexes. Python в venv: Windows — .venv\Scripts\python.exe,
 Linux и macOS — .venv/bin/python.
 """
 
 import os
-import shutil
 import subprocess
 import sys
 
@@ -25,7 +24,6 @@ VENV = os.path.join(ROOT, ".venv")
 VENV_PY = os.path.join(VENV, "Scripts", "python.exe") if os.name == "nt" else \
     os.path.join(VENV, "bin", "python")
 CACHE = os.path.join(ROOT, ".models")
-DONOR = os.path.join(os.path.dirname(ROOT), "mem0-like", ".models")
 
 
 def run(cmd, cwd=None):
@@ -45,18 +43,11 @@ def ensure_venv():
 
 
 def ensure_model_cache():
-    if os.path.isdir(CACHE) and any(
-            d.startswith("models--") for d in os.listdir(CACHE)
-            if os.path.isdir(os.path.join(CACHE, d))):
-        return True
-    if os.path.isdir(DONOR):
-        os.makedirs(CACHE, exist_ok=True)
-        for name in os.listdir(DONOR):
-            src = os.path.join(DONOR, name)
-            if os.path.isdir(src):
-                shutil.copytree(src, os.path.join(CACHE, name), dirs_exist_ok=True)
-        return True
-    return False
+    """Локальный кэш модели; если его нет — fastembed скачает при первом эмбеддинге."""
+    return os.path.isdir(CACHE) and any(
+        d.startswith("models--") for d in os.listdir(CACHE)
+        if os.path.isdir(os.path.join(CACHE, d))
+    )
 
 
 def check():

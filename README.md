@@ -5,10 +5,9 @@ MCP-сервер для harness.
 
 ## Что здесь есть
 
-- Факты проекта читаются из `../mem0-like/memory/*.md` (единственный источник
-  памяти): один bullet = один факт, `##` = раздел. Темы: `hardware`, `game-design`,
-  `flow`. Своя папка `memory/` используется только если её нет; путь переопределяется
-  через `SEMANTIC_MEMORY_MEMORY_DIR`.
+- Факты проекта читаются из `memory/*.md` в корне проекта (единственный источник
+  памяти): один bullet = один факт, `##` = раздел, тема — имя файла. Путь
+  переопределяется через `SEMANTIC_MEMORY_MEMORY_DIR`.
 - `semantic_memory/` — пакет:
   - `facts.py` — факты по темам, индекс перестраивается только для изменённых тем;
   - `codeparse.py` — разбор кода: Python через `ast`, остальные языки
@@ -136,8 +135,8 @@ harness запускает сервер в рабочей директории �
 {
   "mcpServers": {
     "semantic-memory": {
-      "command": "C:\\Users\\%USERNAME%\\Documents\\Strata\\Workspace\\semantic-memory\\.venv\\Scripts\\python.exe",
-      "args": ["C:\\Users\\%USERNAME%\\Documents\\Strata\\Workspace\\semantic-memory\\run_mcp.py"]
+      "command": "C:\\Users\\%USERNAME%\\semantic-memory\\.venv\\Scripts\\python.exe",
+      "args": ["C:\\Users\\%USERNAME%\\semantic-memory\\run_mcp.py"]
     }
   }
 }
