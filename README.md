@@ -40,7 +40,7 @@ Windows (PowerShell):
 ```powershell
 python init.py                 # venv + пакеты + индекс
 python init.py --check         # состояние без правок
-$env:SEMANTIC_MEMORY_ROOT = "C:\Users\Artem\Documents\Strata\Workspace"
+$env:SEMANTIC_MEMORY_ROOT = "C:\Users\%USERNAME%\Documents\Strata\Workspace"
 .venv\Scripts\python.exe -X utf8 -m semantic_memory.cli code "hybrid search" -k 6
 ```
 
@@ -94,10 +94,10 @@ cwd процесса), индекс — `SEMANTIC_MEMORY_DB` (по умолча�
 {
   "mcpServers": {
     "semantic-memory": {
-      "command": "C:\\Users\\Artem\\Documents\\Strata\\Workspace\\semantic-memory\\.venv\\Scripts\\python.exe",
+      "command": "C:\\Users\\%USERNAME%\\Documents\\Strata\\Workspace\\semantic-memory\\.venv\\Scripts\\python.exe",
       "args": ["-m", "semantic_memory.mcp"],
-      "cwd": "C:\\Users\\Artem\\Documents\\Strata\\Workspace\\semantic-memory",
-      "env": { "SEMANTIC_MEMORY_ROOT": "C:\\Users\\Artem\\Documents\\Strata\\Workspace" }
+      "cwd": "C:\\Users\\%USERNAME%\\Documents\\Strata\\Workspace\\semantic-memory",
+      "env": { "SEMANTIC_MEMORY_ROOT": "C:\\Users\\%USERNAME%\\Documents\\Strata\\Workspace" }
     }
   }
 }
