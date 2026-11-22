@@ -98,7 +98,8 @@ TOOLS = [
 
 
 def root():
-    return os.environ.get("SEMANTIC_MEMORY_ROOT") or os.getcwd()
+    value = os.environ.get("SEMANTIC_MEMORY_ROOT")
+    return os.path.abspath(os.path.expanduser(value)) if value else os.getcwd()
 
 
 def open_db():
@@ -117,8 +118,19 @@ def _fmt_symbol(s):
     return "%s\n    %s%s" % (head, sig, ("\n    doc: " + doc) if doc else "")
 
 
+def _norm_path(path):
+    """Аргумент пути → относительный вид со «/»: Windows-слэши и абсолютный путь корня."""
+    p = str(path).replace("\\", "/")
+    base = root().replace("\\", "/").rstrip("/") + "/"
+    if p.lower().startswith(base.lower()):
+        p = p[len(base):]
+    return p.lstrip("/")
+
+
 def call_tool(con, name, args):
     args = args or {}
+    if args.get("path"):
+        args["path"] = _norm_path(args["path"])
     if name == "code_search":
         hits = search.search_symbols(con, args.get("query", ""),
                                      int(args.get("k") or 8),
@@ -238,9 +250,20 @@ def _numbered(text, start):
     return "\n".join(out)
 
 
+def _stream():
+    """Бинарный поток stdout; на обёртках (capture, Jupyter) его нет."""
+    return getattr(sys.stdout, "buffer", None)
+
+
 def _send(obj):
-    sys.stdout.buffer.write(json.dumps(obj, ensure_ascii=False).encode("utf-8") + b"\n")
-    sys.stdout.buffer.flush()
+    payload = json.dumps(obj, ensure_ascii=False).encode("utf-8") + b"\n"
+    stream = _stream()
+    if stream is None:
+        sys.stdout.write(payload.decode("utf-8"))
+        sys.stdout.flush()
+        return
+    stream.write(payload)
+    stream.flush()
 
 
 def _reply(request, result=None, error=None):
@@ -253,13 +276,19 @@ def _reply(request, result=None, error=None):
 
 def serve():
     con = None
-    for line in sys.stdin.buffer:
+    stdin = getattr(sys.stdin, "buffer", sys.stdin)
+    for line in stdin:
         line = line.strip()
         if not line:
             continue
+        if isinstance(line, bytes):
+            try:
+                line = line.decode("utf-8")
+            except UnicodeDecodeError:
+                continue
         try:
-            req = json.loads(line.decode("utf-8"))
-        except (UnicodeDecodeError, json.JSONDecodeError):
+            req = json.loads(line)
+        except json.JSONDecodeError:
             continue
         method = req.get("method")
         if req.get("id") is None and method and method.startswith("notifications/"):

@@ -20,7 +20,8 @@ from . import codeindex, config, db, facts, mcp_server, search
 
 
 def root(args):
-    return args.root or os.environ.get("SEMANTIC_MEMORY_ROOT") or os.getcwd()
+    value = args.root or os.environ.get("SEMANTIC_MEMORY_ROOT")
+    return os.path.abspath(os.path.expanduser(value)) if value else os.getcwd()
 
 
 def main(argv=None):

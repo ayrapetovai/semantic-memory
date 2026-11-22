@@ -128,6 +128,15 @@ class SemanticMemoryTest(unittest.TestCase):
         self.assertIn("файлы", stats)
         self.assertEqual(len(mcp_server.TOOLS), 12)
 
+    def test_paths_portable(self):
+        """Индекс хранит «/»; аргумент пути принимается в любом виде."""
+        rp = codeindex.rel(os.path.join(_TMP, "src", "service.py"), _TMP)
+        self.assertEqual(rp, "src/service.py")
+        self.assertNotIn("\\", rp)
+        for variant in ("src\\service.py", "src/service.py", os.path.join(_TMP, "src", "service.py")):
+            outline = mcp_server.call_tool(self.con, "file_outline", {"path": variant})
+            self.assertIn("Store.load", outline)
+
     def test_parse_language_detection(self):
         self.assertEqual(codeparse.language("a.py"), "python")
         self.assertEqual(codeparse.language("a.tsx"), "typescript")

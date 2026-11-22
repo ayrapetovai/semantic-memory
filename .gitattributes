@@ -1,0 +1,15 @@
+# Текстовые файлы в репозитории — LF, чтобы checkout на Windows не менял переводы строк.
+* text=auto
+
+*.py    text eol=lf
+*.md    text eol=lf
+*.txt   text eol=lf
+*.json  text eol=lf
+*.jsonl text eol=lf
+
+*.db    binary
+*.onnx  binary
+*.bin   binary
+*.dll   binary
+*.so    binary
+*.pyd   binary

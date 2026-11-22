@@ -32,28 +32,54 @@ LLM читает код фрагментами и теряет связи: кт�
 
 ## Запуск
 
+Собирается одинаково на Windows и Linux; отличается только путь к python в venv
+(`.venv\Scripts\python.exe` и `.venv/bin/python`).
+
+Windows (PowerShell):
+
 ```powershell
 python init.py                 # venv + пакеты + индекс
 python init.py --check         # состояние без правок
+$env:SEMANTIC_MEMORY_ROOT = "C:\Users\Artem\Documents\Strata\Workspace"
+.venv\Scripts\python.exe -X utf8 -m semantic_memory.cli code "hybrid search" -k 6
 ```
 
-CLI (из папки semantic-memory):
+Linux (bash):
 
-```powershell
-python -m semantic_memory.cli index
-python -m semantic_memory.cli code "hybrid search" -k 6
-python -m semantic_memory.cli symbol Store.load
-python -m semantic_memory.cli callers build_index
-python -m semantic_memory.cli facts "кулер" --topic hardware
-python -m semantic_memory.cli add "БП: 550 Вт, 80+" --topic hardware
-python -m semantic_memory.cli stats
+```bash
+python3 init.py                # venv + пакеты + индекс
+python3 init.py --check
+export SEMANTIC_MEMORY_ROOT=/path/to/workspace
+.venv/bin/python -m semantic_memory.cli code "hybrid search" -k 6
 ```
 
-Тесты:
+CLI (команды те же на обеих системах, из папки semantic-memory):
 
-```powershell
-python tests\test_semantic_memory.py
+```bash
+.venv/bin/python -m semantic_memory.cli index
+.venv/bin/python -m semantic_memory.cli symbol Store.load
+.venv/bin/python -m semantic_memory.cli callers build_index
+.venv/bin/python -m semantic_memory.cli facts "кулер" --topic hardware
+.venv/bin/python -m semantic_memory.cli add "БП: 550 Вт, 80+" --topic hardware
+.venv/bin/python -m semantic_memory.cli stats
 ```
+
+На Windows вместо `.venv/bin/python` — `.venv\Scripts\python.exe`, а вместо
+`export VAR=…` — `$env:VAR = …`. Тесты: `python tests/test_semantic_memory.py`
+(на Windows `python tests\test_semantic_memory.py`).
+
+## Кроссплатформенность
+
+- Пути в индексе хранятся относительными и с `/` (`codeindex.rel`), запросы вида
+  `semantic_memory/search.py` работают на обеих системах; `~` в `SEMANTIC_MEMORY_ROOT`
+  раскрывается.
+- SQLite, `ast`, regex-разбор и `fastembed` (ONNX) есть на Windows и Linux; кэш модели
+  лежит в `.models`, скачивается при первом запуске, если донора нет.
+- Вывод — UTF-8: на Windows CLI перестраивает stdout, на Linux кодировка по умолчанию.
+- `.gitattributes` фиксирует LF в текстовых файлах, чтобы checkout на Windows не
+  менял переводы строк.
+- Проверено на Windows (тесты + MCP по stdio); на Linux локального запуска не было —
+  на этой машине Linux отсутствует.
 
 ## MCP для harness
 
@@ -77,10 +103,29 @@ cwd процесса), индекс — `SEMANTIC_MEMORY_DB` (по умолча�
 }
 ```
 
+Linux — тот же блок, только пути:
+
+```json
+{
+  "mcpServers": {
+    "semantic-memory": {
+      "command": "/path/to/workspace/semantic-memory/.venv/bin/python",
+      "args": ["-m", "semantic_memory.mcp"],
+      "cwd": "/path/to/workspace/semantic-memory",
+      "env": { "SEMANTIC_MEMORY_ROOT": "/path/to/workspace" }
+    }
+  }
+}
+```
+
 Проверка без harness — запросы по stdin:
 
 ```powershell
 Get-Content tests\mcp_requests.jsonl | .venv\Scripts\python.exe -m semantic_memory.mcp
+```
+
+```bash
+cat tests/mcp_requests.jsonl | .venv/bin/python -m semantic_memory.mcp
 ```
 
 Инструменты: `code_search`, `symbol`, `callers`, `callees`, `references`,
