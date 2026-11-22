@@ -1,13 +1,18 @@
 r"""Пути, модель и лимиты semantic-memory.
 
-Корень проекта — папка semantic-memory: здесь memory\*.md (факты проекта),
-index.db (индекс фактов + кода) и .models\ (кэш ONNX-модели, не в git).
+Корень проекта — папка semantic-memory: здесь index.db (индекс фактов + кода)
+и .models (кэш ONNX-модели, не в git). Факты читаются из mem0-like\memory\*.md —
+это единственный источник памяти проекта; своя папка memory\ используется только
+если её нет (или задан SEMANTIC_MEMORY_MEMORY_DIR).
 """
 
 import os
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-MEMORY_DIR = os.path.join(ROOT, "memory")
+CANONICAL_MEMORY = os.path.join(os.path.dirname(ROOT), "mem0-like", "memory")
+MEMORY_DIR = os.environ.get("SEMANTIC_MEMORY_MEMORY_DIR") or (
+    CANONICAL_MEMORY if os.path.isdir(CANONICAL_MEMORY) else os.path.join(ROOT, "memory")
+)
 DB = os.environ.get("SEMANTIC_MEMORY_DB") or os.path.join(ROOT, "index.db")
 MODEL_CACHE = os.environ.get("SEMANTIC_MEMORY_MODEL_CACHE") or os.path.join(ROOT, ".models")
 MODEL_NAME = os.environ.get(
@@ -31,7 +36,7 @@ SKIP_DIRS = {
 }
 SKIP_SUFFIXES = {".min.js", ".min.css", ".map", ".bundle.js", ".lock", ".svg",
                  ".png", ".jpg", ".jpeg", ".gif", ".ico", ".woff", ".woff2",
-                 ".pdf", ".zip", ".lock", ".log"}
+                 ".pdf", ".zip", ".log"}
 
 CODE_EXT = {
     ".py": "python", ".pyi": "python",
