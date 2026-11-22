@@ -133,6 +133,36 @@ class SemanticMemoryTest(unittest.TestCase):
         self.assertIn("файлы", stats)
         self.assertEqual(len(mcp_server.TOOLS), 12)
 
+    def test_db_per_root_files(self):
+        """Индекс каждого корня — свой файл в INDEX_DIR; чужие не повреждаются."""
+        old_db, old_dir = config.DB, config.INDEX_DIR
+        other = tempfile.mkdtemp()
+        try:
+            config.DB = None
+            config.INDEX_DIR = os.path.join(_TMP, "indexes")
+            a = config.db_path(_TMP)
+            self.assertEqual(a, config.db_path(_TMP + "/"))
+            self.assertNotEqual(a, config.db_path(other))
+            self.assertTrue(a.startswith(config.INDEX_DIR))
+            with open(os.path.join(other, "only_other.py"), "w", encoding="utf-8") as f:
+                f.write("def only_other():\n    return 1\n")
+
+            os.chdir(other)
+            con_b = mcp_server.open_db()
+            self.assertEqual(con_b.execute("SELECT COUNT(*) FROM file").fetchone()[0], 1)
+            self.assertIn("only_other", search.symbol_by_name(con_b, "only_other")[0]["qual"])
+
+            os.chdir(_TMP)
+            con_a = mcp_server.open_db()
+            self.assertEqual(con_a.execute("SELECT COUNT(*) FROM file").fetchone()[0], 2)
+            self.assertIn("build_index", search.symbol_by_name(con_a, "build_index")[0]["qual"])
+
+            con_b2 = db.connect(config.db_path(other))
+            self.assertEqual(con_b2.execute("SELECT COUNT(*) FROM file").fetchone()[0], 1)
+        finally:
+            config.DB, config.INDEX_DIR = old_db, old_dir
+            os.chdir(_TMP)
+
     def test_mcp_root_follows_cwd(self):
         """MCP индексирует cwd процесса: смена директории перестраивает индекс.
 

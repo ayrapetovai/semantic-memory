@@ -39,7 +39,7 @@ def main(argv=None):
     parser.add_argument("--force", action="store_true", help="полная перестройка индекса")
     args = parser.parse_args(argv)
 
-    con = db.connect()
+    con = db.connect(config.db_path(root(args)))
     cmd = args.command
 
     if cmd == "serve":

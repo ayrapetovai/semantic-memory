@@ -1,11 +1,12 @@
 r"""Пути, модель и лимиты semantic-memory.
 
-Корень проекта — папка semantic-memory: здесь index.db (индекс фактов + кода)
+Корень проекта — папка semantic-memory: здесь .indexes (файл индекса под каждый корень кода)
 и .models (кэш ONNX-модели, не в git). Факты читаются из mem0-like\memory\*.md —
 это единственный источник памяти проекта; своя папка memory\ используется только
 если её нет (или задан SEMANTIC_MEMORY_MEMORY_DIR).
 """
 
+import hashlib
 import os
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -13,7 +14,20 @@ CANONICAL_MEMORY = os.path.join(os.path.dirname(ROOT), "mem0-like", "memory")
 MEMORY_DIR = os.environ.get("SEMANTIC_MEMORY_MEMORY_DIR") or (
     CANONICAL_MEMORY if os.path.isdir(CANONICAL_MEMORY) else os.path.join(ROOT, "memory")
 )
-DB = os.environ.get("SEMANTIC_MEMORY_DB") or os.path.join(ROOT, "index.db")
+DB = os.environ.get("SEMANTIC_MEMORY_DB")  # override: один общий файл на все корни
+INDEX_DIR = os.environ.get("SEMANTIC_MEMORY_INDEX_DIR") or os.path.join(ROOT, ".indexes")
+
+
+def db_path(root):
+    """Файл индекса под корень: .indexes/<sha256 корня>.db.
+
+    Так каждый проект хранит свой индекс и смена cwd не трогает чужие.
+    SEMANTIC_MEMORY_DB задаёт один общий файл для всех корней.
+    """
+    if DB:
+        return DB
+    key = hashlib.sha256(os.path.abspath(root).encode("utf-8")).hexdigest()[:16]
+    return os.path.join(INDEX_DIR, key + ".db")
 MODEL_CACHE = os.environ.get("SEMANTIC_MEMORY_MODEL_CACHE") or os.path.join(ROOT, ".models")
 MODEL_NAME = os.environ.get(
     "SEMANTIC_MEMORY_MODEL",

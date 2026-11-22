@@ -1,6 +1,7 @@
 .venv/
 .models/
 index.db
+.indexes/
 __pycache__/
 *.pyc
 .pytest_cache/

@@ -5,6 +5,7 @@ config.SYMBOL_ID_BASE. FTS5 и векторы для обоих типов, но
 чтобы поиск по коду не мешал поиску по фактам.
 """
 
+import os
 import sqlite3
 
 from . import config
@@ -47,7 +48,11 @@ CREATE INDEX IF NOT EXISTS ix_ref_name ON ref(name);
 
 
 def connect(db_path=None):
-    con = sqlite3.connect(db_path or config.DB)
+    path = db_path or config.db_path(os.getcwd())
+    parent = os.path.dirname(path)
+    if parent:
+        os.makedirs(parent, exist_ok=True)
+    con = sqlite3.connect(path)
     con.executescript(SCHEMA)
     con.commit()
     return con
