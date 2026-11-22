@@ -17,9 +17,13 @@ MCP-сервер для harness.
   - `search.py` — гибрид: SQLite FTS5 по токенам (включая разбор camelCase) +
     векторы MiniLM, слияние по рангам;
   - `mcp_server.py` — MCP-сервер на stdio, 12 инструментов, без внешних зависимостей;
+  - `bridge.py` — NDJSON-мост для плагина harness (`recall` / `add` / `reindex` / `stats`);
   - `cli.py` — тот же функционал из командной строки.
 - `init.py` — venv, пакеты, кэш модели, сборка индекса.
+- `.opencode/plugins/semantic-memory/` — плагин OpenCode V2: авто-захват диалога и
+  инъекция recalled-фактов (см. «Автопамять»).
 - `tests/test_semantic_memory.py` — smoke-тесты разбора, индекса, поиска и MCP.
+- `tests/test_bridge.py` — smoke-тест NDJSON-моста.
 
 ## Зачем не просто grep
 
@@ -125,6 +129,63 @@ opencode mcp add semantic-memory --global -- \
 
 Проверка: `/mcps` в TUI или `opencode mcp list` — `✓ semantic-memory connected`.
 Инструменты видны Code Mode как `tools.semantic-memory.*`.
+
+### Автопамять (плагин OpenCode)
+
+Каталог `.opencode/plugins/semantic-memory/` OpenCode грузит сам (плагины из
+`.opencode/plugins/` подхватываются автоматически, отдельных правок в конфиг не
+нужно). Плагин не трогает MCP-инструменты — он добавляет захват и инъекцию без
+вызовов модели:
+
+- `prompt` hook — recalled-факты по тексту реплики и bullet в тему `chat`; эхо
+  собственного запроса из recall отсеивается, дубли bullets проверяются по recalled.
+- `context` hook — блок `<memory>` добавляется в system на каждый ход агент-цикла,
+  включая tool-continuation (история не меняется).
+- `session.execution.succeeded` — конец хода: модель из хвоста диалога извлекает
+  0–3 факта и пишет их в тему `chat` (или в тему из ответа модели).
+- `compaction` hook — перед свёрткой transcript пишет состояние в тему `state`.
+- `tool.execute.after` — после `edit` / `write` / `apply_patch` вызывает reindex,
+  так что индекс кода остаётся свежим в ходе хода.
+
+Мост — отдельный процесс `python -m semantic_memory.bridge` на NDJSON (строка
+запроса → строка ответа с тем же `id`): эмбеддинги, FTS и инкрементальный индекс
+остаются в Python, плагин только вызывает команды. Мост открывает ту же базу, что
+MCP-сервер; `journal_mode=WAL` и `busy_timeout` в `db.connect`, поэтому плагин и
+MCP работают параллельно. Тема хранит не больше `config.MAX_TOPIC_BULLETS` bullets
+(старые удаляются). Python моста: option `python` → `SEMANTIC_MEMORY_PYTHON` →
+`.venv/bin/python` (`.venv\Scripts\python.exe` на Windows) → `python3`.
+
+Опции задаются только когда плагин подключен явно (авто-discovery использует
+значения по умолчанию):
+
+```jsonc
+{
+  "plugins": [
+    {
+      "package": "./.opencode/plugins/semantic-memory",
+      "options": {
+        "python": "/path/to/semantic-memory/.venv/bin/python",
+        "model": { "providerID": "localapi", "id": "gyro-gyro-s" },
+        "distill": true,
+        "inject": true,
+        "captureChat": true,
+        "debug": false,
+        "recallK": 5,
+        "chatTopic": "chat",
+        "stateTopic": "state",
+        "reindexTools": ["edit", "write", "apply_patch"]
+      }
+    }
+  ]
+}
+```
+
+`model` — модель для извлечения фактов (`ctx.experimental.generate.text`); без неё
+извлечение идёт транзитным запросом `ctx.session.generate` на модели сессии.
+`distill: false` оставляет только захват реплик и инъекцию. `debug: true` (или
+`SEMANTIC_MEMORY_DEBUG=1`) пишет в stderr recall/inject/distill — вместе с
+`opencode run --print-logs` видно `[semantic-memory] inject → system: N`.
+Проверка: `memory/chat.md` растёт с репликами, `memory/state.md` — со свёртками.
 
 ### Другие harness
 

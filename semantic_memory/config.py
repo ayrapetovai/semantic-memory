@@ -34,6 +34,7 @@ MODEL_NAME = os.environ.get(
 DEFAULT_TOPIC = "flow"
 TOPIC_SPAN = 1000000          # стабильный диапазон id темы фактов
 SYMBOL_ID_BASE = 10_000_000   # id символов кода начинаются после фактов
+MAX_TOPIC_BULLETS = 200       # cap на число bullets в файле темы (старые удаляются)
 
 MAX_EMBED_CHARS = 900         # эмбеддинг: сигнатура + docstring + начало тела
 MAX_BODY_CHARS = 4000         # тело символа, возвращаемое LLM

@@ -98,6 +98,17 @@ def rebuild_facts(con, force=False):
     return len(read_entries()), changed
 
 
+def _trim_bullets(content):
+    """Удалить старые bullets сверх config.MAX_TOPIC_BULLETS (новые остаются)."""
+    lines = content.splitlines()
+    bullets = [i for i, l in enumerate(lines) if l.startswith("- ")]
+    excess = len(bullets) - config.MAX_TOPIC_BULLETS
+    if excess <= 0:
+        return content
+    drop = set(bullets[:excess])
+    return "\n".join(l for i, l in enumerate(lines) if i not in drop) + "\n"
+
+
 def append_fact(con, text, topic):
     topic = resolve_topic(con, topic)
     os.makedirs(config.MEMORY_DIR, exist_ok=True)
@@ -106,6 +117,7 @@ def append_fact(con, text, topic):
     if os.path.exists(path):
         with open(path, "r", encoding="utf-8") as f:
             content = f.read()
+    content = _trim_bullets(content)
     if not content:
         content = "# %s\n\n%s\n\n" % (topic, AUTO)
     if AUTO not in content:

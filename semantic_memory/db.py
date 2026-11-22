@@ -53,6 +53,8 @@ def connect(db_path=None):
     if parent:
         os.makedirs(parent, exist_ok=True)
     con = sqlite3.connect(path)
+    con.execute("PRAGMA journal_mode=WAL")
+    con.execute("PRAGMA busy_timeout=5000")
     con.executescript(SCHEMA)
     con.commit()
     return con

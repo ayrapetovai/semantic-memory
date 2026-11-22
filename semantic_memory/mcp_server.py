@@ -116,8 +116,7 @@ def open_db():
     if db.meta_get(con, "root") != rt:
         codeindex.reset_code(con)
     codeindex.index_root(con, rt)
-    if con.execute("SELECT COUNT(*) FROM fact").fetchone()[0] == 0:
-        facts.rebuild_facts(con)
+    facts.rebuild_facts(con)  # инкрементально: эмбеддинги только для изменённых тем
     return con
 
 
