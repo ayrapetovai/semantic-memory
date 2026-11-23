@@ -54,9 +54,19 @@ function pickPython(dir: string, opt?: string): string {
   return "python3"
 }
 
+/** Where the semantic_memory package lives for a venv python: <root>/.venv/bin/python → <root>. */
+function packageRoot(python: string): string | undefined {
+  if (!path.isAbsolute(python)) return undefined
+  const guess = path.resolve(python, "..", "..", "..")
+  return existsSync(path.join(guess, "semantic_memory")) ? guess : undefined
+}
+
 /** NDJSON client for `python -m semantic_memory.bridge`: one request line → one answer line. */
 function startBridge(dir: string, python: string) {
-  const proc = spawn(python, ["-m", "semantic_memory.bridge"], { cwd: dir, env: process.env })
+  // in another project the package is not next to cwd, so PYTHONPATH points at the repository
+  const root = packageRoot(python)
+  const env = root ? { ...process.env, PYTHONPATH: root } : process.env
+  const proc = spawn(python, ["-m", "semantic_memory.bridge"], { cwd: dir, env })
   let buffer = ""
   let seq = 0
   let dead = false

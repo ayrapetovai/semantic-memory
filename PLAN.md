@@ -94,6 +94,9 @@ OpenCode server
   privacy (`memory/` in `.gitignore` if the user does not want to commit facts).
 - MCP tools (`facts_add`, `facts_search`, `index_*`) unchanged —
   they stay for explicit model requests.
+- delivery into another project: `init.py --plugin` copies the plugin into the code root
+  (idempotent by sha256, `--force` overwrites files the user edited) and pings the bridge;
+  `init.py --print` prints the `opencode.jsonc` block with the plugin path and `python`.
 
 ## Risks
 - prompt hooks can run again on retry → idempotency by messageID/requestID.
@@ -102,7 +105,8 @@ OpenCode server
   turns it off.
 - `memory/` grows → topic cap + rotation of old bullets (Stage 3/4).
 - plugin python interpreter: if `.venv` is missing the bridge dies — the plugin logs
-  it and degrades to "injection through the model's MCP tools".
+  it and degrades to "injection through the model's MCP tools"; the repository root is
+  derived from `options.python` and passed to the bridge as `PYTHONPATH`.
 
 ## Acceptance
 - a new bullet from the dialogue appears in `memory/` and is found by `facts_search`

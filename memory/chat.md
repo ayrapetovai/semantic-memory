@@ -15,3 +15,4 @@ I did not understand, when the MCP is being installing, how files - /home/artem/
 - ok
 - Thranslate Russian language in this project to Egnlish, including memory.
 - Thranslate Russian language in this project to English, including memory.
+- continue

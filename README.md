@@ -19,11 +19,12 @@ MCP server for the harness.
   - `mcp_server.py` — MCP server on stdio, 12 tools, no external dependencies;
   - `bridge.py` — NDJSON bridge for the harness plugin (`recall` / `add` / `reindex` / `stats`);
   - `cli.py` — the same functionality from the command line.
-- `init.py` — venv, packages, model cache, index build.
+- `init.py` — venv, packages, model cache, index build, plugin delivery into the code root.
 - `.opencode/plugins/semantic-memory/` — OpenCode V2 plugin: automatic capture of the
   dialogue and injection of recalled facts (see "Automatic memory").
 - `tests/test_semantic_memory.py` — smoke tests for parsing, index, search and MCP.
 - `tests/test_bridge.py` — smoke test for the NDJSON bridge.
+- `tests/test_init_plugin.py` — smoke test for plugin delivery into a code root.
 
 ## Why not just grep
 
@@ -43,6 +44,8 @@ Windows (PowerShell):
 ```powershell
 python init.py                 # venv + packages + index (cwd)
 python init.py --check         # state without any changes
+python init.py --plugin        # copy the plugin into the code root, ping the bridge
+python init.py --print         # the opencode.jsonc block for the code root
 .venv\Scripts\python.exe -X utf8 -m semantic_memory.cli code "hybrid search" -k 6
 ```
 
@@ -51,6 +54,8 @@ Linux (bash):
 ```bash
 python3 init.py                # venv + packages + index (cwd)
 python3 init.py --check
+python3 init.py --plugin       # copy the plugin into the code root, ping the bridge
+python3 init.py --print        # the opencode.jsonc block for the code root
 .venv/bin/python -m semantic_memory.cli code "hybrid search" -k 6
 ```
 
@@ -187,6 +192,53 @@ extraction runs as a transit request `ctx.session.generate` on the session model
 `SEMANTIC_MEMORY_DEBUG=1`) writes recall/inject/distill to stderr — together with
 `opencode run --print-logs` you see `[semantic-memory] inject → system: N`.
 Check: `memory/chat.md` grows with the turns, `memory/state.md` with the foldings.
+
+### Installing into another project
+
+OpenCode auto-discovers `.opencode/plugins/` only in the directory it opens, so in someone
+else's project the plugin must be copied there and told which python has semantic-memory.
+Run this from the semantic-memory folder with the project as the code root (cwd, or
+`SEMANTIC_MEMORY_ROOT=/path/to/project`):
+
+```bash
+python init.py --plugin        # copy the plugin into the code root, then ping the bridge
+python init.py --check --print # state of the code root + the ready opencode.jsonc block
+```
+
+`--plugin` copies `.opencode/plugins/semantic-memory` into
+`<code root>/.opencode/plugins/semantic-memory` and is idempotent by sha256: files identical
+to the repository are not copied, files edited by the user are skipped unless `--force`.
+Then it starts `python -m semantic_memory.bridge` in the code root once and prints
+`bridge: alive (<root>)` — the same command OpenCode will run. With `--print` added, the
+config block is printed after the ping.
+
+`--print` prints the block to merge into the project's `opencode.jsonc` (or the global config):
+
+```jsonc
+{
+  "mcp": {
+    "servers": {
+      "semantic-memory": {
+        "type": "local",
+        "command": ["/path/to/semantic-memory/.venv/bin/python",
+                    "/path/to/semantic-memory/run_mcp.py"]
+      }
+    }
+  },
+  "plugins": [
+    {
+      "package": "/path/to/project/.opencode/plugins/semantic-memory",
+      "options": {"python": "/path/to/semantic-memory/.venv/bin/python"}
+    }
+  ]
+}
+```
+
+The `python` option is the venv of this repository. The plugin derives the repository path
+from it (`<root>/.venv/bin/python` → `<root>`) and gives it to the bridge as `PYTHONPATH`,
+so the package is found even when the project lives elsewhere; on Windows the same is
+`.venv\Scripts\python.exe`. Without `python` the plugin falls back to the project's own
+`.venv`, and the bridge dies with `ModuleNotFoundError`.
 
 ### Other harnesses
 
