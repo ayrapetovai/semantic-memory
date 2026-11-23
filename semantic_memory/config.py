@@ -1,18 +1,18 @@
 r"""Paths, model and limits for semantic-memory.
 
-The project root is the semantic-memory folder: here live .indexes (one index file
-per code root) and .models (ONNX model cache, not in git). Facts are read from
-memory\*.md under that root — the single source of memory; the path can be
-overridden with SEMANTIC_MEMORY_MEMORY_DIR.
+The project root is the process working directory: there live memory\*.md — the
+single source of memory — and .indexes (one index file per code root). The model
+cache .models stays next to the package, shared by all projects. Both paths can be
+overridden with SEMANTIC_MEMORY_MEMORY_DIR and SEMANTIC_MEMORY_INDEX_DIR.
 """
 
 import hashlib
 import os
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-MEMORY_DIR = os.environ.get("SEMANTIC_MEMORY_MEMORY_DIR") or os.path.join(ROOT, "memory")
+MEMORY_DIR = os.environ.get("SEMANTIC_MEMORY_MEMORY_DIR") or os.path.join(os.getcwd(), "memory")
 DB = os.environ.get("SEMANTIC_MEMORY_DB")  # override: one shared file for all roots
-INDEX_DIR = os.environ.get("SEMANTIC_MEMORY_INDEX_DIR") or os.path.join(ROOT, ".indexes")
+INDEX_DIR = os.environ.get("SEMANTIC_MEMORY_INDEX_DIR") or os.path.join(os.getcwd(), ".indexes")
 
 
 def db_path(root):
