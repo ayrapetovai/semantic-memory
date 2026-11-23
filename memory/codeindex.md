@@ -2,5 +2,5 @@
 
 ## Decision stream
 
-- Code embedding bug: codeindex.py:155 `idx = symbols + i` double-counts the position, so the tail symbols of every file lose their vector (12 in semantic-memory, 5 in magpie); fix `idx = symbols`, add a test `count(sym)==count(sym_vec)`, then `--reindex` — separate commit
-- Still open: bug in codeindex.index_paths — `idx = symbols + i` double-counts the index, 17 symbols without embeddings (12 in semantic-memory, 5 in magpie), some store the vector of a neighbouring symbol; fix `idx = symbols` + test `count(sym)==count(sym_vec)` + `init.py --reindex`
+- Code embedding bug fixed in commit ee485f2: `index_paths` embeds with `start = symbols` per file and `idx = start + i` (the old `idx = symbols + i` double-counted the position); the detail and the self-healing of old databases are in the codeindex-bug topic
+- The fix is covered by `tests/test_embedding_offsets` (`count(sym) == count(sym_vec)`) and `test_missing_vectors_are_rebuilt`; a plain `--reindex` (force) recomputes all vectors, a normal reindex heals only the files missing them
