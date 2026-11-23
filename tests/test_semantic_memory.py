@@ -13,7 +13,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 _TMP = tempfile.mkdtemp()
 os.environ["SEMANTIC_MEMORY_DB"] = os.path.join(_TMP, "index.db")
 
-from semantic_memory import codeindex, codeparse, config, db, facts, mcp_server, search
+from semantic_memory import codeindex, codeparse, config, db, embed, facts, mcp_server, search
 
 SERVICE = '''"""Line search server."""
 import json
@@ -91,6 +91,33 @@ class SemanticMemoryTest(unittest.TestCase):
             "SELECT qual, kind FROM sym WHERE file = 'src/panel.js' ORDER BY start").fetchall()
         self.assertEqual([r[0] for r in rows], ["Panel", "Panel.constructor",
                                                 "Panel.render", "Panel.row"])
+
+    def test_embedding_offsets(self):
+        """Vectors align by file start + position, so every symbol gets one — not only
+        the symbols of the first files (the running counter double-counted them before)."""
+        if not embed.available():
+            self.skipTest("fastembed is not installed")
+        total = self.con.execute("SELECT COUNT(*) FROM sym").fetchone()[0]
+        self.assertEqual(total, self.con.execute("SELECT COUNT(*) FROM sym_vec").fetchone()[0])
+        last = self.con.execute(
+            "SELECT id FROM sym WHERE file = 'src/panel.js' ORDER BY start DESC LIMIT 1"
+        ).fetchone()[0]
+        self.assertIsNotNone(self.con.execute("SELECT emb FROM sym_vec WHERE id = ?", (last,)).fetchone())
+        self.assertEqual([], codeindex.symbols_without_vectors(self.con))
+
+    def test_missing_vectors_are_rebuilt(self):
+        """A database indexed by the old offset heals on the next reindex: the files
+        whose symbols have no vector are re-embedded, the rest is left alone."""
+        if not embed.available():
+            self.skipTest("fastembed is not installed")
+        db.meta_set(self.con, "vecfix", "0")  # pretend the index came from the old build
+        self.con.execute("DELETE FROM sym_vec WHERE id IN"
+                         " (SELECT id FROM sym WHERE file = 'src/panel.js')")
+        self.con.commit()
+        self.assertEqual(["src/panel.js"], codeindex.symbols_without_vectors(self.con))
+        codeindex.index_root(self.con, _TMP)
+        self.assertEqual([], codeindex.symbols_without_vectors(self.con))
+        self.assertEqual("1", db.meta_get(self.con, "vecfix"))
 
     def test_callers_and_refs(self):
         callers = search.callers(self.con, "build_index")

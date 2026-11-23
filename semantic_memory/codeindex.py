@@ -140,6 +140,9 @@ def index_paths(con, root, paths, force=False):
     for rp, fp, digest, size in parsed:
         purge_file(con, rp)
         base = file_base(con, rp)
+        # vectors follow the order of parsed files, so a symbol takes start + i;
+        # the running counter already counts the symbols of this file.
+        start = symbols
         for i, sym in enumerate(fp.symbols[:MAX_SYMBOLS_PER_FILE]):
             rid = base + i + 1
             con.execute(
@@ -151,7 +154,7 @@ def index_paths(con, root, paths, force=False):
             con.execute("INSERT INTO sym_fts (rowid, text, file, lang) VALUES (?, ?, ?, ?)",
                         (rid, fts_text(sym), rp, fp.lang))
             if vectors is not None and vectors:
-                idx = symbols + i
+                idx = start + i
                 if idx < len(vectors):
                     con.execute("INSERT INTO sym_vec (id, emb) VALUES (?, ?)",
                                 (rid, embed.pack(vectors[idx])))
@@ -177,6 +180,13 @@ def index_paths(con, root, paths, force=False):
     return files, symbols, [rp for rp, _, _, _ in parsed]
 
 
+def symbols_without_vectors(con):
+    """Files whose symbols have no vector: the index was built with a wrong offset."""
+    return [rp for (rp,) in con.execute(
+        "SELECT DISTINCT s.file FROM sym s LEFT JOIN sym_vec v ON v.id = s.id"
+        " WHERE v.id IS NULL").fetchall()]
+
+
 def index_root(con, root, force=False):
     """Full walk of the root; embeddings are recomputed only for files that changed."""
     paths = iter_code(root)
@@ -186,6 +196,14 @@ def index_root(con, root, force=False):
     for rp in removed:
         purge_file(con, rp)
         db.meta_set(con, "hash:" + rp, "")
+    for rp in removed:
+        purge_file(con, rp)
+    # files indexed before the offset fix have symbols without vectors: rebuild them
+    if embed.available() and db.meta_get(con, "vecfix") != "1":
+        stale = symbols_without_vectors(con)
+        if stale:
+            index_paths(con, root, [os.path.join(root, rp) for rp in stale], force=True)
+            db.meta_set(con, "vecfix", "1" if not symbols_without_vectors(con) else "0")
     db.meta_set(con, "root", os.path.abspath(root))
     db.meta_set(con, "embedded", "1" if embed.available() else "0")
     con.commit()
