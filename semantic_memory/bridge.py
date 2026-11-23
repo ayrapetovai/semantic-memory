@@ -3,20 +3,24 @@ r"""NDJSON bridge for OpenCode plugins: one request line → one JSON answer lin
 Run: python -m semantic_memory.bridge
 Requests:
   {"cmd": "ping"}
-  {"cmd": "recall", "query": "...", "k": 5, "topic": "..."}
-  {"cmd": "add", "text": "...", "topic": "..."}
+  {"cmd": "recall", "query": "...", "k": 5, "topic": "...",
+   "excludeTopics": ["chat"], "minSim": 0.45}
+  {"cmd": "add", "text": "...", "topic": "...", "force": false}
   {"cmd": "reindex", "path": "...", "force": false}
+  {"cmd": "lint", "apply": false}
   {"cmd": "stats"}
 The id field (when supplied) comes back with the answer — the client matches lines.
 Errors are {"ok": false, "error": "..."}; a bad line never ends the process.
-Code is indexed and facts rebuilt on every request (same as in MCP).
+
+Facts are rebuilt on every request (incremental by topic hash). The code tree is
+NOT hashed on every request: recall/add/stats only read the existing index, and
+`reindex` (or the plugin's post-edit hook) refreshes it.
 """
 
 import json
-import os
 import sys
 
-from . import codeindex, db, facts, search
+from . import codeindex, config, db, facts, search
 from .mcp_server import open_db, root
 
 
@@ -30,25 +34,42 @@ def _stats(con):
     }
 
 
+def _reindex(con, req):
+    sub = req.get("path")
+    base = config.safe_path(root(), sub) if sub else root()
+    if base is None:
+        raise ValueError("path escapes the project root: %r" % sub)
+    force = bool(req.get("force"))
+    if sub:
+        files, symbols, changed = codeindex.index_paths(
+            con, root(), codeindex.iter_code(base), force=force)
+        removed = []
+    else:
+        files, symbols, changed, removed = codeindex.index_root(con, root(), force=force)
+    return {"files": files, "symbols": symbols, "changed": changed,
+            "removed": removed}
+
+
 def handle(req):
     cmd = req.get("cmd")
-    con = open_db()
+    con = open_db(scan_code=False)
     if cmd == "ping":
         return {"ok": True, **_stats(con)}
     if cmd == "recall":
-        hits = search.search_facts(con, req.get("query", ""),
-                                   int(req.get("k") or 5), req.get("topic"))
+        hits = search.search_facts(
+            con, req.get("query", ""), int(req.get("k") or 5),
+            req.get("topic"), exclude_topics=req.get("excludeTopics"),
+            min_sim=req.get("minSim"))
         return {"facts": hits}
     if cmd == "add":
-        topic = facts.append_fact(con, req.get("text", ""), req.get("topic"))
+        result = facts.add_fact(con, req.get("text", ""), req.get("topic"),
+                                force=bool(req.get("force")))
         n, changed = facts.rebuild_facts(con)
-        return {"topic": topic, "facts": n, "changed": changed}
+        return {**result, "facts": n, "changed": changed}
     if cmd == "reindex":
-        sub = req.get("path")
-        base = os.path.join(root(), sub) if sub else root()
-        files, symbols, changed = codeindex.index_paths(
-            con, root(), codeindex.iter_code(base), force=bool(req.get("force")))
-        return {"files": files, "symbols": symbols, "changed": changed}
+        return _reindex(con, req)
+    if cmd == "lint":
+        return facts.lint(con, apply=bool(req.get("apply")))
     if cmd == "stats":
         return _stats(con)
     raise ValueError("unknown command: %s" % cmd)

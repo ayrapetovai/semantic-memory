@@ -111,8 +111,6 @@ def language(path):
     return config.CODE_EXT.get(os.path.splitext(path)[1].lower())
 
 
-import os  # noqa: E402  (used by language)
-
 
 def split_identifiers(name):
     """camelCase / snake_case → tokens for the text search."""
@@ -195,10 +193,17 @@ def _parse_python(fp, text):
                 collect(child, qual)
                 walk(child, qual + ".")
             else:
-                if isinstance(child, ast.Call):
-                    callee = _call_name(child.func)
-                    if callee:
-                        fp.calls.append((None, callee, child.lineno))
+                # Outside any function/class: record module-level calls and name
+                # uses. Inside a function both are already recorded by collect().
+                if prefix == "":
+                    if isinstance(child, ast.Call):
+                        callee = _call_name(child.func)
+                        if callee:
+                            fp.calls.append((None, callee, child.lineno))
+                    elif isinstance(child, ast.Name):
+                        fp.refs.append((child.id, child.lineno))
+                    elif isinstance(child, ast.Attribute):
+                        fp.refs.append((child.attr, child.lineno))
                 walk(child, prefix)
 
     walk(tree, "")

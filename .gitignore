@@ -1,7 +1,10 @@
 .venv/
+memory/
 .models/
 index.db
 .indexes/
 __pycache__/
 *.pyc
 .pytest_cache/
+
+*.egg-info/

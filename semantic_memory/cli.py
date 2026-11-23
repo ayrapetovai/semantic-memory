@@ -7,8 +7,10 @@ r"""semantic-memory CLI.
   python -m semantic_memory.cli callers name | callees name | refs name
   python -m semantic_memory.cli outline path               file outline
   python -m semantic_memory.cli map [--path sub]           project files
-  python -m semantic_memory.cli facts "cooling fan" [--topic hardware]
-  python -m semantic_memory.cli add "a fact" [--topic flow]
+  python -m semantic_memory.cli facts "cooling fan" [--topic hardware] [--min-sim 0.35]
+  python -m semantic_memory.cli add "a fact" [--topic flow] [--force]
+  python -m semantic_memory.cli lint [--apply]
+  python -m semantic_memory.cli gc [--days 90] [--dry-run]
   python -m semantic_memory.cli stats
 """
 
@@ -16,7 +18,7 @@ import argparse
 import os
 import sys
 
-from . import codeindex, config, db, facts, mcp_server, search
+from . import codeindex, config, db, facts, gc, mcp_server, search
 
 
 def root(args):
@@ -28,26 +30,42 @@ def main(argv=None):
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding="utf-8")
     parser = argparse.ArgumentParser(description="semantic-memory: fact memory + code index")
-    parser.add_argument("command", help="index|serve|code|symbol|callers|callees|refs|outline|map|facts|add|stats")
+    parser.add_argument("command", help="index|serve|code|symbol|callers|callees|refs|outline|map|"
+                                        "facts|add|lint|gc|stats")
     parser.add_argument("arg", nargs="?", default="")
     parser.add_argument("--root", default=None, help="code root of the project (defaults to cwd)")
-    parser.add_argument("-k", type=int, default=8, help="number of results")
+    parser.add_argument("-k", "--k", type=int, default=8, help="number of results")
     parser.add_argument("--topic", default=None, help="fact topic")
     parser.add_argument("--lang", default=None, help="filter by language")
     parser.add_argument("--path", default=None, help="filter by path substring")
     parser.add_argument("--no-embed", action="store_true", help="search without vectors")
-    parser.add_argument("--force", action="store_true", help="full index rebuild")
+    parser.add_argument("--min-sim", type=float, default=None,
+                        help="minimum vector similarity for vector-only fact hits")
+    parser.add_argument("--exclude-topic", action="append", default=None,
+                        help="omit a fact topic (repeatable)")
+    parser.add_argument("--force", action="store_true", help="rebuild/index bypassing checks")
+    parser.add_argument("--apply", action="store_true", help="lint: remove exact duplicates")
+    parser.add_argument("--days", type=int, default=None, help="gc: delete index files older than N days")
+    parser.add_argument("--dry-run", action="store_true", help="gc: report without deleting")
     args = parser.parse_args(argv)
 
     con = db.connect(config.db_path(root(args)))
     cmd = args.command
+
+    # memory/*.md is the source of truth; a fresh or stale DB must not answer
+    # "no facts" just because nobody ran the index explicitly.
+    if cmd in ("facts", "lint", "stats"):
+        facts.rebuild_facts(con)
 
     if cmd == "serve":
         mcp_server.serve()
         return 0
 
     if cmd == "index":
-        base = os.path.join(root(args), args.arg) if args.arg else root(args)
+        base = config.safe_path(root(args), args.arg) if args.arg else root(args)
+        if base is None:
+            print("path escapes the project root: %r" % args.arg)
+            return 1
         files, symbols, changed = codeindex.index_paths(
             con, root(args), codeindex.iter_code(base), force=args.force)
         removed = 0
@@ -68,19 +86,28 @@ def main(argv=None):
         return 0
 
     if cmd == "add":
-        topic = facts.append_fact(con, args.arg, args.topic)
+        result = facts.add_fact(con, args.arg, args.topic, force=args.force)
         n, changed = facts.rebuild_facts(con)
-        print("fact written to %s; %d documents, rebuilt %d" % (topic, n, len(changed)))
+        if not result["added"]:
+            print("skipped: duplicates #%s:%d (%s); %d documents"
+                  % (result["topic"], result["duplicate_of"], result["matched"], n))
+        else:
+            print("fact written to %s; %d documents, rebuilt %d"
+                  % (result["topic"], n, len(changed)))
         return 0
 
     if cmd == "facts":
         hits = search.search_facts(con, args.arg, args.k, args.topic,
-                                   use_embed=not args.no_embed)
+                                   use_embed=not args.no_embed,
+                                   exclude_topics=args.exclude_topic,
+                                   min_sim=args.min_sim)
         if not hits:
             print("no facts")
             return 0
         for h in hits:
-            print("#%s:%d  %.4f  %s" % (h["topic"], h["num"], h["score"], h["text"]))
+            print("#%s:%d  %.4f  %s  %s%s" % (
+                h["topic"], h["num"], h["score"], h["via"], h["text"],
+                (" (%s)" % h["added"]) if h.get("added") else ""))
         return 0
 
     if cmd == "code":
@@ -114,7 +141,9 @@ def main(argv=None):
             rows = search.callers(con, args.arg)
             print("called from:")
             for r in rows:
-                print("  %s:%d  %s [%s]" % (r["file"], r["line"], r["qual"], r["kind"]))
+                print("  %s:%d  %s [%s]" % (r["file"], r["line"],
+                                            r["qual"] or "(module)",
+                                            r["kind"] or "module"))
         elif cmd == "callees":
             print("calls: " + ", ".join(search.callees(con, args.arg)))
         else:
@@ -131,6 +160,45 @@ def main(argv=None):
             return 1
         for r in rows:
             print("  %d-%d  %s [%s]  %s" % (r[2], r[3], r[0], r[1], (r[4] or "")[:100]))
+        return 0
+
+    if cmd == "lint":
+        report = facts.lint(con, apply=args.apply, min_sim=args.min_sim,
+                            stale_days=args.days)
+        rows = report["findings"]
+        if not rows:
+            print("memory clean: %d topics, no duplicates or stale facts"
+                  % report["topics"])
+            return 0
+        for f in rows:
+            detail = ""
+            if f["kind"] in ("duplicate", "near-duplicate"):
+                detail = " of #%s:%d" % (f["topic"], f["of"])
+            elif f["kind"] == "stale":
+                detail = " age %d days" % f["age"]
+            print("%s #%s:%d%s  %s" % (f["kind"], f["topic"], f["num"], detail,
+                                       f["text"][:160]))
+        print("%d finding(s), %d exact duplicate(s) removed"
+              % (len(rows), report["removed"]))
+        return 0
+
+    if cmd == "gc":
+        if config.DB:
+            print("gc: SEMANTIC_MEMORY_DB is set (one shared file); nothing to collect")
+            return 0
+        found = gc.collect(config.INDEX_DIR, days=args.days, keep_roots=[root(args)])
+        if not found:
+            print("gc: no orphaned index files in %s" % config.INDEX_DIR)
+            return 0
+        total = sum(size for _, _, _, size in found) / (1024.0 * 1024.0)
+        for path, rp, reason, size in found:
+            print("%s  %.1f MB  %s  %s" % (path, size / (1024.0 * 1024.0), reason, rp or "-"))
+        if args.dry_run:
+            print("gc: dry run, %d file(s), %.1f MB" % (len(found), total))
+            return 0
+        for path, _, _, _ in found:
+            gc.remove(path)
+        print("gc: removed %d file(s), %.1f MB" % (len(found), total))
         return 0
 
     if cmd == "map":

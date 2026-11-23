@@ -45,7 +45,13 @@ def main():
 
         added = send(proc, {"id": 2, "cmd": "add", "text": "Cooling fan: 120 mm, 12 W.", "topic": "hardware"})
         assert added["ok"] and added["topic"] == "hardware", added
-        assert added["facts"] >= 1, added
+        assert added["added"] is True and added["facts"] >= 1, added
+
+        dup = send(proc, {"id": 20, "cmd": "add", "text": "cooling fan 120 mm 12 W", "topic": "hardware"})
+        assert dup["ok"] and dup["added"] is False and dup["matched"] == "text", dup
+
+        none = send(proc, {"id": 21, "cmd": "recall", "query": "asdkjhasd qwerty", "k": 3})
+        assert none["ok"] and none["facts"] == [], none
 
         hits = send(proc, {"id": 3, "cmd": "recall", "query": "cooling fan", "k": 3})
         assert hits["ok"] and hits["id"] == 3, hits
@@ -58,12 +64,18 @@ def main():
         hits = send(proc, {"id": 4, "cmd": "recall", "query": "cache 64 MB", "k": 3})
         assert any("64 MB" in f["text"] for f in hits["facts"]), hits
 
+        with open(os.path.join(TMP, "memory", "chat.md"), "w", encoding="utf-8") as f:
+            f.write("# chat\n\n## Decision stream\n\n- How do I install the plugin?\n")
+        clean = send(proc, {"id": 22, "cmd": "recall", "query": "install plugin",
+                            "k": 5, "excludeTopics": ["chat"]})
+        assert clean["ok"] and all(f["topic"] != "chat" for f in clean["facts"]), clean
+
         reindex = send(proc, {"id": 4, "cmd": "reindex"})
         assert reindex["ok"], reindex
         with open(os.path.join(TMP, "src", "cache.py"), "w", encoding="utf-8") as f:
             f.write("def warm():\n    return 1\n")
-        # open_db() indexes the root on every request, so the index shows up
-        # in stats; force=true re-reads the files and returns their list.
+        # recall/add/stats no longer hash the tree; reindex is the only trigger.
+        # force=true re-reads all files and returns their list.
         stats = send(proc, {"id": 5, "cmd": "stats"})
         assert stats["ok"] and stats["files"] >= 1, stats
         forced = send(proc, {"id": 6, "cmd": "reindex", "force": True})

@@ -115,7 +115,6 @@ def fts_text(sym):
 def index_paths(con, root, paths, force=False):
     """Index the given files, skipping unchanged ones. Returns (files, symbols, changed)."""
     parsed = []
-    known_names = {n for (n,) in con.execute("SELECT name FROM sym").fetchall()}
     for full in paths:
         rp = rel(full, root)
         try:
@@ -129,7 +128,6 @@ def index_paths(con, root, paths, force=False):
             continue
         fp = codeparse.parse(full, text)
         parsed.append((rp, fp, digest, len(text.encode("utf-8"))))
-        known_names |= {s.name for s in fp.symbols}
     if not parsed:
         return 0, 0, []
 
@@ -163,9 +161,17 @@ def index_paths(con, root, paths, force=False):
                 if qual == sym.qual:
                     con.execute("INSERT INTO call (sym_id, callee, file, line)"
                                 " VALUES (?, ?, ?, ?)", (rid, callee, rp, line))
+        # Calls at module level have no owner symbol; keep them with sym_id NULL
+        # so `callers` can report them as `(module)`.
+        for qual, callee, line in fp.calls:
+            if qual is None:
+                con.execute("INSERT INTO call (sym_id, callee, file, line)"
+                            " VALUES (?, ?, ?, ?)", (None, callee, rp, line))
         seen = set()
+        # All identifier references: a ref in an unchanged file must still be
+        # found after the definition appears in another file.
         for name, line in fp.refs:
-            if name in known_names and (name, line) not in seen:
+            if (name, line) not in seen:
                 seen.add((name, line))
                 con.execute("INSERT INTO ref (name, file, line) VALUES (?, ?, ?)",
                             (name, rp, line))
@@ -196,8 +202,6 @@ def index_root(con, root, force=False):
     for rp in removed:
         purge_file(con, rp)
         db.meta_set(con, "hash:" + rp, "")
-    for rp in removed:
-        purge_file(con, rp)
     # files indexed before the offset fix have symbols without vectors: rebuild them
     if embed.available() and db.meta_get(con, "vecfix") != "1":
         stale = symbols_without_vectors(con)

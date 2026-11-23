@@ -22,7 +22,7 @@ os.environ["SEMANTIC_MEMORY_ROOT"] = TMP
 os.environ["SEMANTIC_MEMORY_DB"] = os.path.join(TMP, "index.db")
 os.environ["SEMANTIC_MEMORY_MEMORY_DIR"] = os.path.join(TMP, "memory")
 
-import init
+import init  # noqa: E402  (environment is set above the import)
 
 
 def capture(fn, *args, **kwargs):

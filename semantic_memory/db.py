@@ -14,7 +14,8 @@ SCHEMA = """
 CREATE TABLE IF NOT EXISTS meta (k TEXT PRIMARY KEY, v TEXT);
 
 CREATE TABLE IF NOT EXISTS fact (
-  id INTEGER PRIMARY KEY, topic TEXT, num INTEGER, text TEXT
+  id INTEGER PRIMARY KEY, topic TEXT, num INTEGER, text TEXT,
+  added TEXT, superseded TEXT
 );
 CREATE VIRTUAL TABLE IF NOT EXISTS fact_fts USING fts5(
   text, topic UNINDEXED, tokenize='unicode61 remove_diacritics 2'
@@ -47,6 +48,15 @@ CREATE INDEX IF NOT EXISTS ix_ref_name ON ref(name);
 """
 
 
+def _migrate(con):
+    """Additive migrations for databases created by older versions."""
+    cols = {r[1] for r in con.execute("PRAGMA table_info(fact)").fetchall()}
+    if "added" not in cols:
+        con.execute("ALTER TABLE fact ADD COLUMN added TEXT")
+    if "superseded" not in cols:
+        con.execute("ALTER TABLE fact ADD COLUMN superseded TEXT")
+
+
 def connect(db_path=None):
     path = db_path or config.db_path(os.getcwd())
     parent = os.path.dirname(path)
@@ -56,6 +66,7 @@ def connect(db_path=None):
     con.execute("PRAGMA journal_mode=WAL")
     con.execute("PRAGMA busy_timeout=5000")
     con.executescript(SCHEMA)
+    _migrate(con)
     con.commit()
     return con
 

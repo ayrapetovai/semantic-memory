@@ -1,0 +1,46 @@
+{
+  "code": [
+    {"q": "rank_hybrid", "expect": ["engine.py:rank_hybrid"], "k": 5},
+    {"q": "rank hybrid reciprocal rank fusion", "expect": ["engine.py:rank_hybrid"], "k": 5},
+    {"q": "merge_ranks", "expect": ["engine.py:merge_ranks"], "k": 5},
+    {"q": "reciprocal rank fusion ranked lists", "expect": ["engine.py:merge_ranks"], "k": 5},
+    {"q": "RankCache remember", "expect": ["engine.py:RankCache.remember"], "k": 5},
+    {"q": "cache last query and results", "expect": ["engine.py:RankCache"], "k": 5},
+    {"q": "RankCache forget cached results", "expect": ["engine.py:RankCache.forget"], "k": 5},
+    {"q": "handle_request dispatch NDJSON", "expect": ["bridge.py:handle_request"], "k": 5},
+    {"q": "dispatch one request to command handler", "expect": ["bridge.py:handle_request"], "k": 5},
+    {"q": "open_db per root index without hashing", "expect": ["bridge.py:open_db"], "k": 5},
+    {"q": "rebuild_index changed files", "expect": ["bridge.py:rebuild_index"], "k": 5},
+    {"q": "search_facts memory topics", "expect": ["search.py:search_facts"], "k": 5},
+    {"q": "search indexed code symbols", "expect": ["search.py:search_symbols"], "k": 5},
+    {"q": "filter_topics excluded topics", "expect": ["search.py:filter_topics"], "k": 5},
+    {"q": "drop chat and state topics from recalled facts", "expect": ["search.py:filter_topics"], "k": 5},
+    {"q": "window scores 60 rank sorted", "expect": ["engine.py:merge_ranks"], "k": 5},
+    {"q": "tiny cache class rank engine", "expect": ["engine.py:RankCache"], "k": 5},
+    {"q": "bridge opens the per root index", "expect": ["bridge.py:open_db"], "k": 5}
+  ],
+  "facts": [
+    {"q": "hybrid ranking reciprocal rank fusion", "expect": ["decisions:1"], "k": 5},
+    {"q": "code root process cwd own index file", "expect": ["decisions:2"], "k": 5},
+    {"q": "dated bullets redacted secrets", "expect": ["decisions:3"], "k": 5},
+    {"q": "archived bullets not indexed or injected", "expect": ["decisions:4"], "k": 5},
+    {"q": "normalized text duplicate skipped on write", "expect": ["decisions:5"], "k": 5},
+    {"q": "unittest discover temporary directories", "expect": ["conventions:1"], "k": 5},
+    {"q": "safe_path tool arguments project root", "expect": ["conventions:2"], "k": 5},
+    {"q": "NDJSON bridge never hashes code tree recall", "expect": ["conventions:3"], "k": 5},
+    {"q": "FTS and vector results merged", "expect": ["decisions:1"], "k": 5},
+    {"q": "memory directory follows cwd", "expect": ["decisions:2"], "k": 5},
+    {"q": "secret redaction before write", "expect": ["decisions:3"], "k": 5},
+    {"q": "keep stale facts out of the index", "expect": ["decisions:4"], "k": 5},
+    {"q": "exact duplicate fact is skipped", "expect": ["decisions:5"], "k": 5},
+    {"q": "tests use tempfile", "expect": ["conventions:1"], "k": 5},
+    {"q": "path traversal rejection", "expect": ["conventions:2"], "k": 5},
+    {"q": "no tree scan on recall", "expect": ["conventions:3"], "k": 5}
+  ],
+  "nonsense": [
+    {"q": "zzzqqqxxxyyy plugh", "expect": [], "k": 5}
+  ],
+  "chat_excluded": [
+    {"q": "where do I install the plugin?", "expect": [], "excludeTopics": ["chat"], "k": 5}
+  ]
+}

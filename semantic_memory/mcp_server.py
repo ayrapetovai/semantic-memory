@@ -72,18 +72,33 @@ TOOLS = [
          "limit": {"type": "integer", "description": "Number of files, defaults to 40."}}}},
     {"name": "facts_search",
      "description": "Search over project memory (memory/*.md): decisions, conventions, "
-                    "notes about code. One bullet = one fact.",
+                    "notes about code. One bullet = one fact. Relevant-to-the-query "
+                    "results only; use excludeTopics to drop a noisy topic.",
      "inputSchema": {"type": "object", "properties": {
          "query": {"type": "string", "description": "Query."},
          "topic": {"type": "string", "description": "Topic: the name of memory/<topic>.md."},
-         "k": {"type": "integer", "description": "Number of results, defaults to 5."}},
+         "k": {"type": "integer", "description": "Number of results, defaults to 5."},
+         "excludeTopics": {"type": "array", "items": {"type": "string"},
+                           "description": "Topics to omit (for example chat, state)."},
+         "minSim": {"type": "number",
+                    "description": "Minimum vector similarity for vector-only hits."}},
          "required": ["query"]}},
     {"name": "facts_add",
-     "description": "Write a fact into project memory. One bullet = one fact.",
+     "description": "Write a fact into project memory. One bullet = one fact. "
+                    "Identical or near-identical facts in the topic are skipped "
+                    "unless force=true; secrets are redacted.",
      "inputSchema": {"type": "object", "properties": {
          "text": {"type": "string", "description": "Fact text: a decision or convention."},
-         "topic": {"type": "string", "description": "Topic; a new topic file is created when the name is unknown."}},
+         "topic": {"type": "string", "description": "Topic; a new topic file is created when the name is unknown."},
+         "force": {"type": "boolean", "description": "Write even if a duplicate exists."}},
          "required": ["text"]}},
+    {"name": "memory_lint",
+     "description": "Report duplicate, near-duplicate, undated and stale facts. "
+                    "apply=true removes exact duplicates (archive sections are untouched).",
+     "inputSchema": {"type": "object", "properties": {
+         "apply": {"type": "boolean", "description": "Remove exact duplicates."},
+         "minSim": {"type": "number", "description": "Near-duplicate threshold."},
+         "staleDays": {"type": "integer", "description": "Age in days for a stale fact."}}}},
     {"name": "index_rebuild",
      "description": "Rebuild the code index under the project root (changed files) or "
                     "completely (force=true). Call it after a large code change.",
@@ -101,18 +116,18 @@ def root():
     return os.getcwd()
 
 
-def open_db():
+def open_db(scan_code=True):
     """Index for the current root (the process cwd): one file under config.INDEX_DIR.
 
-    Every root keeps its own index, so changing cwd does not touch indexes of other
-    projects. reset_code is only needed when the file holds code from a different
-    root — the case of one shared file via SEMANTIC_MEMORY_DB.
+    `scan_code=False` skips the sha256 walk when the caller only needs facts
+    (the bridge calls it for recall/add/stats; the plugin reindexes after edits).
     """
     rt = root()
     con = db.connect(config.db_path(rt))
     if db.meta_get(con, "root") != rt:
         codeindex.reset_code(con)
-    codeindex.index_root(con, rt)
+    if scan_code:
+        codeindex.index_root(con, rt)
     facts.rebuild_facts(con)  # incremental: embeddings only for changed topics
     return con
 
@@ -166,7 +181,8 @@ def call_tool(con, name, args):
         if not rows:
             return "Nothing calls %r in the index." % args.get("name")
         return "Called from:\n" + "\n".join(
-            "  %s:%d  %s [%s]" % (r["file"], r["line"], r["qual"], r["kind"])
+            "  %s:%d  %s [%s]" % (r["file"], r["line"],
+                                 r["qual"] or "(module)", r["kind"] or "module")
             for r in rows)
 
     if name == "callees":
@@ -195,7 +211,9 @@ def call_tool(con, name, args):
 
     if name == "file_read":
         rp = args.get("path", "")
-        full = os.path.join(root(), rp)
+        full = config.safe_path(root(), rp)
+        if full is None:
+            return "path escapes the project root: %r" % rp
         if not os.path.isfile(full):
             return "File %r not found." % rp
         with open(full, "r", encoding="utf-8", errors="replace") as f:
@@ -216,22 +234,52 @@ def call_tool(con, name, args):
 
     if name == "facts_search":
         hits = search.search_facts(con, args.get("query", ""),
-                                   int(args.get("k") or 5), args.get("topic"))
+                                   int(args.get("k") or 5), args.get("topic"),
+                                   exclude_topics=args.get("excludeTopics"),
+                                   min_sim=args.get("minSim"))
         if not hits:
             return "No facts match the query."
         return "Facts:\n" + "\n".join(
-            "  #%s:%d (score %.4f) %s" % (h["topic"], h["num"], h["score"], h["text"])
+            "  #%s:%d (score %.4f, %s) %s%s" % (
+                h["topic"], h["num"], h["score"], h["via"], h["text"],
+                (" (%s)" % h["added"]) if h.get("added") else "")
             for h in hits)
 
     if name == "facts_add":
-        topic = facts.append_fact(con, args.get("text", ""), args.get("topic"))
+        result = facts.add_fact(con, args.get("text", ""), args.get("topic"),
+                                force=bool(args.get("force")))
         n, changed = facts.rebuild_facts(con)
+        if not result["added"]:
+            return "Skipped: duplicates #%s:%d (%s); %d documents." % (
+                result["topic"], result["duplicate_of"], result["matched"], n)
         return "Fact written to topic %s; %d documents, %d rebuilt." % (
-            topic, n, len(changed))
+            result["topic"], n, len(changed))
+
+    if name == "memory_lint":
+        report = facts.lint(con, apply=bool(args.get("apply")),
+                            min_sim=args.get("minSim"),
+                            stale_days=args.get("staleDays"))
+        rows = report["findings"]
+        if not rows:
+            return "Memory is clean: %d topics, no duplicates or stale facts." % (
+                report["topics"])
+        lines = ["Memory lint: %d finding(s), %d exact duplicate(s) removed."
+                 % (len(rows), report["removed"])]
+        for f in rows:
+            detail = ""
+            if f["kind"] in ("duplicate", "near-duplicate"):
+                detail = " of #%s:%d" % (f["topic"], f["of"])
+            elif f["kind"] == "stale":
+                detail = " age %d days" % f["age"]
+            lines.append("  %s: #%s:%d%s — %s" % (
+                f["kind"], f["topic"], f["num"], detail, f["text"][:160]))
+        return "\n".join(lines)
 
     if name == "index_rebuild":
         sub = args.get("path")
-        base = os.path.join(root(), sub) if sub else root()
+        base = config.safe_path(root(), sub) if sub else root()
+        if base is None:
+            return "path escapes the project root: %r" % sub
         force = bool(args.get("force"))
         paths = codeindex.iter_code(base)
         files, symbols, changed = codeindex.index_paths(con, root(), paths, force=force)
@@ -240,11 +288,15 @@ def call_tool(con, name, args):
 
     if name == "index_stats":
         st = search.stats(con)
+        warn = ""
+        if st["symbols"] > config.ANN_WARN:
+            warn = ("\n  warning: %d symbols; vector search is a brute-force scan "
+                    "(install sqlite-vec or scope the index)" % st["symbols"])
         return "semantic-memory index\n  root: %s\n  files: %d\n  symbols: %d\n" \
-               "  calls: %d\n  languages: %s\n  embeddings: %s" % (
+               "  calls: %d\n  languages: %s\n  embeddings: %s%s" % (
             st["root"], st["files"], st["symbols"], st["calls"],
             ", ".join("%s:%d" % (k, v) for k, v in st["languages"].items()),
-            "on" if st["embedded"] else "off")
+            "on" if st["embedded"] else "off", warn)
 
     raise ValueError("unknown tool %r" % name)
 

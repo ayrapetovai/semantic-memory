@@ -13,7 +13,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 _TMP = tempfile.mkdtemp()
 os.environ["SEMANTIC_MEMORY_DB"] = os.path.join(_TMP, "index.db")
 
-from semantic_memory import codeindex, codeparse, config, db, embed, facts, mcp_server, search
+from semantic_memory import codeindex, codeparse, config, db, embed, facts, mcp_server, search  # noqa: E402
 
 SERVICE = '''"""Line search server."""
 import json
@@ -158,7 +158,7 @@ class SemanticMemoryTest(unittest.TestCase):
         self.assertIn("Store.load", outline)
         stats = mcp_server.call_tool(self.con, "index_stats", {})
         self.assertIn("files", stats)
-        self.assertEqual(len(mcp_server.TOOLS), 12)
+        self.assertEqual(len(mcp_server.TOOLS), 13)
 
     def test_db_per_root_files(self):
         """Each root keeps its own index file; other roots stay untouched."""

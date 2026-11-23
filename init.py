@@ -26,7 +26,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from semantic_memory import config
+from semantic_memory import config, db, facts
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
 VENV = os.path.join(ROOT, ".venv")
@@ -66,12 +66,43 @@ def ensure_model_cache():
     )
 
 
+def index_state():
+    """Number and size of per-root index files under the index directory."""
+    directory = config.INDEX_DIR
+    if not os.path.isdir(directory):
+        return "0 files"
+    files = [f for f in os.listdir(directory) if f.endswith(".db")]
+    size = sum(os.path.getsize(os.path.join(directory, f)) for f in files)
+    hint = " (gc available)" if len(files) > 1 else ""
+    return "%d file(s), %.1f MB%s" % (len(files), size / (1024.0 * 1024.0), hint)
+
+
+def lint_state():
+    """Memory lint summary without touching a real index file."""
+    con = db.connect(":memory:")
+    try:
+        report = facts.lint(con)
+    except Exception as exc:  # a broken memory file must not break --check
+        return "unavailable: %s" % exc
+    finally:
+        con.close()
+    if not report["findings"]:
+        return "clean (%d topics)" % report["topics"]
+    return "%d finding(s) in %d topics" % (len(report["findings"]), report["topics"])
+
+
 def check():
     print("venv: %s" % ("present" if os.path.isfile(VENV_PY) else "missing"))
     print("model cache: %s" % ("present" if os.path.isdir(CACHE) and os.listdir(CACHE) else "missing"))
     print("code root: %s" % code_root())
     print("db: %s" % config.db_path(code_root()))
+    print("indexes: %s" % index_state())
     print("plugin: %s" % plugin_state())
+    print("memory lint: %s" % lint_state())
+    print("plugin defaults: captureChat=off, distill=off, inject=on, "
+          "excludeTopics=chat,state, minSim=%.2f" % config.MIN_VECTOR_SIM)
+    alive, info = bridge_ping()
+    print("bridge: %s (%s)" % ("alive" if alive else "failed", info))
 
 
 def reindex(force=False):

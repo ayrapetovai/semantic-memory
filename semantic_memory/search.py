@@ -57,7 +57,8 @@ def _fts_count(con, table, query, limit, where=None, args=None):
     return [rid for _, rid in scored[:limit]]
 
 
-def _vec(con, table, query, limit, where=None, args=None):
+def _vec(con, table, query, limit, where=None, args=None, min_sim=None,
+         return_scores=False):
     vectors = embed.embed([query[:config.MAX_EMBED_CHARS]])
     if not vectors:
         return []
@@ -71,7 +72,10 @@ def _vec(con, table, query, limit, where=None, args=None):
     if not rows:
         return []
     scores = embed.cosine(vectors[0], rows)
-    return [rid for _, rid in scores[:limit]]
+    if min_sim is not None:
+        scores = [pair for pair in scores if pair[0] >= min_sim]
+    scores = scores[:limit]
+    return scores if return_scores else [rid for _, rid in scores]
 
 
 def merge(ranks, window=60):
@@ -83,24 +87,68 @@ def merge(ranks, window=60):
     return sorted(scores.items(), key=lambda kv: kv[1], reverse=True)
 
 
-def search_facts(con, query, k=5, topic=None, use_embed=True):
-    want = 40 if topic else 20
-    where = "topic = ?" if topic else None
-    args = [topic] if topic else []
-    vec_where = ("id IN (SELECT id FROM fact WHERE topic = ?)"
-                 if topic else None)
+def _fact_where(topic, exclude_topics):
+    """WHERE fragment over the fact/topic columns (None when nothing is filtered)."""
+    clauses, args = [], []
+    if topic:
+        clauses.append("topic = ?")
+        args.append(topic)
+    if exclude_topics:
+        clauses.append("topic NOT IN (%s)" % ", ".join("?" * len(exclude_topics)))
+        args.extend(exclude_topics)
+    return " AND ".join(clauses) if clauses else None, args
+
+
+def _fact_vec_where(topic, exclude_topics):
+    inner, args = _fact_where(topic, exclude_topics)
+    return ("id IN (SELECT id FROM fact WHERE %s)" % inner, args) if inner else (None, [])
+
+
+def search_facts(con, query, k=5, topic=None, use_embed=True, exclude_topics=None,
+                 min_sim=None):
+    """Facts ranked by hybrid FTS + vectors.
+
+    Vector-only hits below `min_sim` (config.MIN_VECTOR_SIM by default) are
+    dropped before fusion, so a nonsense query returns nothing instead of the
+    nearest five bullets. A vector-only hit with no shared query token must be
+    very similar (config.MIN_VECTOR_STRONG_SIM) — gibberish can score 0.5
+    against an unrelated short bullet. `exclude_topics` keeps prompt/compaction
+    noise out.
+    """
+    want = max(40, k * 4) if topic else max(20, k * 4)
+    if min_sim is None:
+        min_sim = config.MIN_VECTOR_SIM
+    where, args = _fact_where(topic, exclude_topics)
+    vec_where, vec_args = _fact_vec_where(topic, exclude_topics)
     if use_embed:
-        ranks = [_fts(con, "fact_fts", query, want, where, args),
-                 _vec(con, "fact_vec", query, want, vec_where, args)]
+        fts = _fts(con, "fact_fts", query, want, where, args)
+        vec_scored = _vec(con, "fact_vec", query, want, vec_where, vec_args,
+                          min_sim, return_scores=True)
+        vec = [rid for _, rid in vec_scored]
+        ranks = [fts, vec]
     else:
-        ranks = [_fts_count(con, "fact_fts", query, want, where, args)]
+        fts, vec = _fts_count(con, "fact_fts", query, want, where, args), []
+        vec_scored = []
+        ranks = [fts]
+    fts_ids, vec_ids = set(fts), set(vec)
+    sims = {rid: sim for sim, rid in vec_scored}
+    query_words = set(query_tokens(query))
     out = []
-    for rid, score in merge(ranks)[:k]:
-        row = con.execute("SELECT topic, num, text FROM fact WHERE id = ?",
-                          (rid,)).fetchone()
-        if row:
-            out.append({"id": rid, "score": round(score, 4), "topic": row[0],
-                        "num": row[1], "text": row[2]})
+    for rid, score in merge(ranks):
+        row = con.execute("SELECT topic, num, text, added, superseded FROM fact "
+                          "WHERE id = ?", (rid,)).fetchone()
+        if not row:
+            continue
+        via = "both" if rid in fts_ids and rid in vec_ids else (
+            "fts" if rid in fts_ids else "vec")
+        if via == "vec" and not (query_words & set(query_tokens(row[2]))):
+            if sims.get(rid, 0.0) < config.MIN_VECTOR_STRONG_SIM:
+                continue
+        out.append({"id": rid, "score": round(score, 4), "topic": row[0],
+                    "num": row[1], "text": row[2], "added": row[3],
+                    "superseded": row[4], "via": via})
+        if len(out) >= k:
+            break
     return out
 
 
@@ -166,9 +214,16 @@ def symbol_body(con, rid):
 
 
 def callers(con, name, k=20):
+    """Call sites of a symbol, including module-level calls (owner is None).
+
+    `line` is the call site, not the owner's start line.
+    """
+    # Module-level calls have sym_id NULL: use the call's own file when there is
+    # no owner symbol to join to.
     rows = con.execute(
-        "SELECT DISTINCT s.file, s.qual, s.kind, s.start FROM call c "
-        "JOIN sym s ON s.id = c.sym_id WHERE c.callee = ? LIMIT ?",
+        "SELECT DISTINCT COALESCE(s.file, c.file) AS file, s.qual, s.kind, c.line "
+        "FROM call c LEFT JOIN sym s ON s.id = c.sym_id WHERE c.callee = ? "
+        "ORDER BY COALESCE(s.file, c.file), c.line LIMIT ?",
         (name, k)).fetchall()
     return [{"file": r[0], "qual": r[1], "kind": r[2], "line": r[3]} for r in rows]
 
@@ -207,6 +262,6 @@ def stats(con):
     by_lang = con.execute(
         "SELECT lang, COUNT(*) FROM file GROUP BY lang ORDER BY 2 DESC").fetchall()
     return {"facts": facts, "symbols": syms, "files": files, "calls": calls,
-            "languages": {l: n for l, n in by_lang},
+            "languages": {lang: n for lang, n in by_lang},
             "embedded": db.meta_get(con, "embedded") == "1",
             "root": db.meta_get(con, "root")}
