@@ -1,7 +1,8 @@
 import { Plugin } from "@opencode/plugin"
 import { spawn } from "node:child_process"
-import { existsSync } from "node:fs"
+import { appendFileSync, existsSync } from "node:fs"
 import path from "node:path"
+import { createRegistry } from "./bridges.mjs"
 import {
   DISTILL_PROMPT,
   TOPIC_RE,
@@ -20,6 +21,10 @@ import {
  * bridge (python -m semantic_memory.bridge), relevant facts are added to the
  * system prompt of every model turn. The semantic-memory MCP tools stay for
  * explicit requests (facts_search, facts_add, index_*).
+ *
+ * The plugin instance is shared by the server, so the project directory is resolved
+ * per event from the session's location. Each directory gets its own bridge: a
+ * session must never read or write another project's memory.
  */
 
 interface MemoryFact {
@@ -42,6 +47,8 @@ interface Options {
   captureChat?: boolean
   /** Log recall/inject/distill to server stderr (SEMANTIC_MEMORY_DEBUG=1). */
   debug?: boolean
+  /** Write debug lines to this file too (the plugin's stderr is not visible to a shared server). */
+  logFile?: string
   recallK?: number
   /** Topics never injected (default: chat, state). */
   excludeTopics?: string[]
@@ -70,62 +77,38 @@ function packageRoot(python: string): string | undefined {
   return existsSync(path.join(guess, "semantic_memory")) ? guess : undefined
 }
 
-/** NDJSON client for `python -m semantic_memory.bridge`: one request line → one answer line. */
-function startBridge(dir: string, python: string, onExit?: () => void) {
-  // in another project the package is not next to cwd, so PYTHONPATH points at the repository
-  const root = packageRoot(python)
-  const timeoutMs = Number(process.env.SEMANTIC_MEMORY_TIMEOUT_MS) || 10_000
-  const env = root ? { ...process.env, PYTHONPATH: root } : process.env
-  const proc = spawn(python, ["-m", "semantic_memory.bridge"], { cwd: dir, env })
-  let buffer = ""
-  let seq = 0
-  let dead = false
-  const waiters = new Map<number, (result: any) => void>()
-
-  proc.stdout?.on("data", (chunk) => {
-    buffer += chunk.toString("utf8")
-    let nl: number
-    while ((nl = buffer.indexOf("\n")) >= 0) {
-      const raw = buffer.slice(0, nl)
-      buffer = buffer.slice(nl + 1)
-      if (!raw.trim()) continue
-      let msg: any
-      try {
-        msg = JSON.parse(raw)
-      } catch {
-        continue
-      }
-      const resolve = waiters.get(msg.id)
-      if (resolve) {
-        waiters.delete(msg.id)
-        resolve(msg)
-      }
-    }
-  })
-  proc.stderr?.on("data", (chunk) => console.error("[semantic-memory]", chunk.toString("utf8").trimEnd()))
-  proc.on("exit", () => {
-    dead = true
-    for (const resolve of waiters.values()) resolve({ ok: false, error: "bridge stopped" })
-    waiters.clear()
-    onExit?.()
-  })
-
-  function request(cmd: string, args: Record<string, unknown> = {}): Promise<any> {
-    if (dead || !proc.stdin?.writable) return Promise.resolve({ ok: false, error: "bridge stopped" })
-    const id = ++seq
-    return new Promise((resolve) => {
-      waiters.set(id, resolve)
-      proc.stdin.write(JSON.stringify({ id, cmd, ...args }) + "\n")
-      setTimeout(() => {
-        if (waiters.has(id)) {
-          waiters.delete(id)
-          resolve({ ok: false, error: "bridge timeout" })
-        }
-      }, cmd === "reindex" ? Math.max(timeoutMs, 30_000) : timeoutMs)
-    })
+/**
+ * A session's project directory, or undefined when the server does not report one.
+ * Never fall back to the plugin's own location or process.cwd(): in a shared server
+ * that would read and write another project's memory. `hint` is a directory carried by
+ * the event itself; it wins and replaces the cached one, so a moved session is tracked.
+ */
+async function directoryOf(
+  ctx: any,
+  sessionID: string,
+  known: Map<string, string>,
+  hint?: unknown,
+): Promise<string | undefined> {
+  if (typeof hint === "string" && hint) {
+    if (sessionID) known.set(sessionID, hint)
+    return hint
   }
-
-  return { request, stop: () => proc.kill() }
+  const cached = sessionID ? known.get(sessionID) : undefined
+  if (cached) return cached
+  if (!sessionID) return undefined
+  try {
+    const session = await ctx.session.get({ sessionID })
+    const dir = session?.location?.directory
+    if (typeof dir !== "string" || !dir) return undefined
+    known.set(sessionID, dir)
+    if (known.size > 512) {
+      const oldest = known.keys().next().value
+      if (oldest !== undefined) known.delete(oldest)
+    }
+    return dir
+  } catch {
+    return undefined
+  }
 }
 
 export default Plugin.define({
@@ -145,58 +128,50 @@ export default Plugin.define({
     const stateTopic = options.stateTopic && TOPIC_RE.test(options.stateTopic) ? options.stateTopic : "state"
     const writeTools = options.reindexTools?.length ? options.reindexTools : WRITE_TOOLS
 
-    const dir = ctx.location?.directory || process.cwd()
     const debug = options.debug === true || process.env.SEMANTIC_MEMORY_DEBUG === "1"
     const log = (...args: unknown[]) => {
-      if (debug) console.error("[semantic-memory]", ...args)
-    }
-
-    // One restart-friendly bridge: a dead interpreter disables memory instead of
-    // hanging hooks; after a crash it retries with backoff (max 3). Requests made
-    // while restarting are queued (bounded) and replayed when the new process is up.
-    let bridge: ReturnType<typeof startBridge>
-    let stopping = false
-    let restarts = 0
-    let restartTimer: ReturnType<typeof setTimeout> | null = null
-    const queue: Array<{
-      cmd: string
-      args: Record<string, unknown>
-      resolve: (result: any) => void
-    }> = []
-    function launch() {
-      const born = Date.now()
-      bridge = startBridge(dir, pickPython(dir, options.python), () => {
-        if (stopping) return
-        if (Date.now() - born > 60_000) restarts = 0
-        if (restarts >= 3) {
-          console.error("[semantic-memory] bridge stopped; memory disabled for this session")
-          return
+      if (!debug) return
+      const line = `[semantic-memory] ${args.map((arg) => (typeof arg === "string" ? arg : JSON.stringify(arg))).join(" ")}`
+      console.error(line)
+      // a shared server swallows the plugin's stderr, so a file sink keeps it observable
+      if (options.logFile) {
+        try {
+          appendFileSync(options.logFile, line + "\n")
+        } catch {
+          /* diagnostics must never break a hook */
         }
-        const delay = [1000, 5000, 15000][restarts++]
-        log("bridge exited; restart in", delay, "ms")
-        restartTimer = setTimeout(() => {
-          restartTimer = null
-          if (stopping) return
-          launch()
-          const waiting = queue.splice(0)
-          for (const item of waiting) void bridge.request(item.cmd, item.args).then(item.resolve)
-        }, delay)
-      })
-    }
-    launch()
-    const request = (cmd: string, args: Record<string, unknown> = {}): Promise<any> => {
-      if (stopping) return Promise.resolve({ ok: false, error: "memory stopped" })
-      if (restartTimer) {
-        if (queue.length >= 64) return Promise.resolve({ ok: false, error: "memory queue full" })
-        return new Promise((resolve) => queue.push({ cmd, args, resolve }))
       }
-      return bridge.request(cmd, args).then((result) => {
-        if (result?.error === "bridge stopped" && restartTimer && restarts < 3) {
-          if (queue.length >= 64) return { ok: false, error: "memory queue full" }
-          return new Promise((resolve) => queue.push({ cmd, args, resolve }))
-        }
-        return result
-      })
+    }
+    const instanceDir = ctx.location?.directory
+
+    // Bridges keyed by project directory: one server hosts sessions from many
+    // locations, and a plugin instance outlives the location that loaded it, so the
+    // directory is resolved per event, not here. Each directory gets its own
+    // interpreter; idle ones are stopped so a long-lived server does not accumulate
+    // Python processes. A dead interpreter disables memory for that directory instead
+    // of hanging hooks; after a crash it restarts with backoff (max 3).
+    const sessionDirs = new Map<string, string>()
+    const registry = createRegistry((dir: string) => {
+      // in another project the package is not next to cwd, so PYTHONPATH points at the repository
+      const python = pickPython(dir, options.python)
+      const root = packageRoot(python)
+      const env = root ? { ...process.env, PYTHONPATH: root } : process.env
+      log("bridge python:", python, "for:", dir, "options:", JSON.stringify(options))
+      if (instanceDir && instanceDir !== dir) log("plugin instance dir differs:", instanceDir)
+      return spawn(python, ["-m", "semantic_memory.bridge"], { cwd: dir, env })
+    }, { log })
+
+    /**
+     * Bridge calls scoped to the session's own project, or undefined when the server
+     * reports no directory for it — then memory is skipped rather than guessed.
+     */
+    async function memoryFor(event: any, sessionID: string) {
+      const dir = await directoryOf(ctx, sessionID, sessionDirs, event?.location?.directory)
+      if (!dir) {
+        log("no directory for session:", sessionID || "?", "memory skipped")
+        return undefined
+      }
+      return (cmd: string, args: Record<string, unknown> = {}): Promise<any> => registry.request(dir, cmd, args)
     }
 
     const pending = new Map<string, MemoryFact[]>()
@@ -212,9 +187,11 @@ export default Plugin.define({
     }
     const controller = new AbortController()
 
-    /** LLM extraction of facts from a dialogue fragment → memory/*.md through the bridge. */
-    async function distillInto(sessionID: string, text: string, fallbackTopic: string) {
+    /** LLM extraction of facts from a dialogue fragment → memory/*.md of that project. */
+    async function distillInto(event: any, sessionID: string, text: string, fallbackTopic: string) {
       if (!distill || !text.trim()) return
+      const call = await memoryFor(event, sessionID)
+      if (!call) return
       const safe = redact(text)
       if (safe.count) log("redacted:", safe.count)
       const prompt = DISTILL_PROMPT + safe.text.slice(0, 6000)
@@ -225,7 +202,7 @@ export default Plugin.define({
       const facts = parseFacts(String((generated as any)?.text || ""), fallbackTopic)
       log("distill →", facts.map((fact) => `${fact.topic}: ${fact.text}`))
       for (const fact of facts) {
-        const result = await request("add", { text: fact.text, topic: fact.topic })
+        const result = await call("add", { text: fact.text, topic: fact.topic })
         if (result?.added === false) log("distill → skipped duplicate", fact.topic, result.duplicate_of)
       }
     }
@@ -236,9 +213,11 @@ export default Plugin.define({
         const sessionID = String(event.sessionID)
         const text = String(event.prompt?.text || "").trim()
         if (!text) return
+        const call = await memoryFor(event, sessionID)
+        if (!call) return
         log("prompt turn:", sessionID)
         if (inject) {
-          const recall = await request("recall", {
+          const recall = await call("recall", {
             query: text.slice(0, 500), k: recallK, excludeTopics, minSim,
           })
           const facts = (recall.facts || []).filter((fact: MemoryFact) => fact.text && !isEcho(text, fact.text))
@@ -251,12 +230,12 @@ export default Plugin.define({
         const safeBullet = redact(text.slice(0, 400))
         if (safeBullet.count) log("redacted:", safeBullet.count)
         const bullet = safeBullet.text
-        const dup = await request("recall", {
+        const dup = await call("recall", {
           query: bullet.slice(0, 200), k: 1, topic: chatTopic, minSim,
         })
         if (!(dup.facts || []).some((fact: MemoryFact) => norm(bulletText(fact.text)) === norm(bullet))) {
           log("chat bullet →", chatTopic)
-          await request("add", { text: bullet, topic: chatTopic })
+          await call("add", { text: bullet, topic: chatTopic })
         }
       } catch (err) {
         console.error("[semantic-memory] prompt hook:", err)
@@ -274,7 +253,8 @@ export default Plugin.define({
 
     // Compaction: record the state before the transcript gets folded away.
     await ctx.session.hook("compaction", async (event: any) => {
-      void distillInto(String(event.sessionID), transcript(event.messages || []), stateTopic).catch((err) =>
+      const sessionID = String(event.sessionID)
+      void distillInto(event, sessionID, transcript(event.messages || []), stateTopic).catch((err) =>
         console.error("[semantic-memory] compaction distill:", err),
       )
     })
@@ -295,7 +275,7 @@ export default Plugin.define({
         if (!sessionID) continue
         try {
           const messages = await ctx.session.context({ sessionID })
-          await distillInto(sessionID, transcript(messages), chatTopic)
+          await distillInto(event, sessionID, transcript(messages), chatTopic)
         } catch (err) {
           console.error("[semantic-memory] execution distill:", err)
         } finally {
@@ -304,18 +284,19 @@ export default Plugin.define({
       }
     })().catch((err) => console.error("[semantic-memory] event loop:", err))
 
-    // Reindex the code right after file edits.
+    // Reindex the code of the project the tool just edited.
     await ctx.tool.hook("execute.after", async (event: any) => {
       const name = String(event.tool || event.name || "")
       if (!writeTools.includes(name)) return
       if (event.status !== "completed") return
-      await request("reindex", {}).catch(() => {})
+      const call = await memoryFor(event, String(event.sessionID || ""))
+      if (!call) return
+      await call("reindex", {}).catch(() => {})
     })
 
     return () => {
-      stopping = true
       controller.abort()
-      bridge.stop()
+      registry.stopAll()
     }
   },
 })

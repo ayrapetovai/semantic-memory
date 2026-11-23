@@ -236,10 +236,17 @@ index stay in Python, the plugin only sends commands. It no longer hashes the co
 tree on `recall`/`add`/`stats`; only `reindex` scans. The bridge opens the same database
 as the MCP server; `journal_mode=WAL` and `busy_timeout` let them work in parallel. A
 topic keeps at most `config.MAX_TOPIC_BULLETS` bullets; older ones move under
-`## Archive` instead of being deleted. Requests during a bridge restart are queued
-(bounded at 64); after three failed restarts memory stays disabled and logs once to
-stderr. Python for the bridge: option `python` → `SEMANTIC_MEMORY_PYTHON` →
-`.venv/bin/python` (`.venv\Scripts\python.exe` on Windows) → `python3`.
+`## Archive` instead of being deleted.
+One server runs sessions from several projects at once, so the project directory is
+resolved per event (`event.location` → `session.get`) and each directory gets its own
+bridge: `memory/*.md` and `.indexes/` always belong to the session's own project, never
+to the directory that loaded the plugin. When the server reports no directory, memory is
+skipped instead of guessed. Requests during a bridge restart are queued (bounded at 64);
+after three failed restarts memory stays disabled and logs once to stderr. Idle bridges
+are stopped after `SEMANTIC_MEMORY_IDLE_MS` (default 10 minutes) and at most 32 are kept.
+Python for the bridge: option
+`python` → `SEMANTIC_MEMORY_PYTHON` → `.venv/bin/python` (`.venv\Scripts\python.exe` on
+Windows) → `python3`.
 
 Options are only applied when the plugin is attached explicitly (auto-discovery uses
 the defaults):
@@ -258,6 +265,7 @@ the defaults):
         "excludeTopics": ["chat", "state"],
         "minSim": 0.45,
         "debug": false,
+        "logFile": "/tmp/semantic-memory.log",
         "recallK": 5,
         "chatTopic": "chat",
         "stateTopic": "state",
@@ -274,6 +282,8 @@ reason distill is opt-in. `captureChat: true` writes user turns (redacted) into
 `memory/chat.md`; `distill: true` also extracts decisions. `debug: true` (or
 `SEMANTIC_MEMORY_DEBUG=1`) writes recall/inject/distill/redaction counts to stderr —
 together with `opencode run --print-logs` you see `[semantic-memory] inject → system: N`.
+A server that already runs keeps the plugin's stderr out of the CLI's output, so
+`logFile` appends the same lines to a file (a debug aid; never required).
 `SEMANTIC_MEMORY_TIMEOUT_MS` (default 10 000; reindex keeps at least 30 000) bounds a
 request so a dead bridge never hangs a hook.
 
