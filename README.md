@@ -72,6 +72,28 @@ The first embedding downloads the multilingual MiniLM model (~241 MB) into
 `.models`. Extras: `embeddings` (fastembed), `vec` (sqlite-vec, optional) and
 `dev` (pytest, ruff). Without fastembed, search still works on exact tokens.
 
+## Uninstall
+
+```bash
+./uninstall.sh                  # the plan, nothing changes
+./uninstall.sh --apply          # config entries, plugin copies, pip uninstall, orphaned index DBs
+./uninstall.sh --apply --global # also ~/.config/opencode/opencode.jsonc, which affects every project
+./uninstall.sh --apply --purge  # also .venv/, .models/, all of .indexes/ and memory/
+./uninstall.sh --apply --config other/opencode.jsonc --keep-plugin --no-kill
+```
+
+Dry run by default; every edited config file is copied to `<file>.uninstall-backup` first, so the edit
+is reversible. Keep one component with `--keep-config`, `--keep-plugin`, `--keep-python`,
+`--keep-indexes`, `--keep-models` or `--keep-memory`. `--no-kill` stops only the MCP server and the
+bridge processes — the plugin restarts a killed bridge three times before giving up, so removing the
+config entries is what keeps the service off. `memory/` is deleted only with `--remove-memory` or
+`--purge`, into a tar archive first unless `--no-backup`: `memory/*.md` holds the decisions distilled
+from past sessions and cannot be recovered afterwards.
+
+Windows has no bash: stop the processes, drop the `mcp.servers` `semantic-memory` block from the
+config, delete `.opencode/plugins/semantic-memory`, then
+`.venv\Scripts\python.exe -m pip uninstall semantic-memory`.
+
 ## Running
 
 It builds the same way on Windows and Linux; only the path to python in the venv
