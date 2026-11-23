@@ -16,3 +16,14 @@ I did not understand, when the MCP is being installing, how files - /home/artem/
 - Thranslate Russian language in this project to Egnlish, including memory.
 - Thranslate Russian language in this project to English, including memory.
 - continue
+- Research how the semantic-memory can improve accursy of coding?
+- Why did you do code changes?
+- Make a code review.
+- The semantic-memory mcp makes the LLM engine to parse all the input from start to finish, is that becase of the hooks that plugin offers?
+- Is the analysis done?
+- ok.
+Other thoughts: we must measure the effectivness of the semantic-memory somehow. Advise some ideas.
+- Can you perform "2. A/B scenario harness" by yourself?
+- go
+- "Say exactly: hello"
+- all user-facing strings must be English
