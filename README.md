@@ -7,7 +7,8 @@ MCP server for the harness.
 
 - Project facts are read from `memory/*.md` in the project root (the single source
   of memory): one bullet = one fact, `##` = a section, the topic is the file name.
-  The path is overridden with `SEMANTIC_MEMORY_MEMORY_DIR`.
+  The memory directory and the index directory follow the process cwd; they are
+  overridden with `SEMANTIC_MEMORY_MEMORY_DIR` and `SEMANTIC_MEMORY_INDEX_DIR`.
 - `semantic_memory/` — the package:
   - `facts.py` — facts by topic, the index is rebuilt only for changed topics;
   - `codeparse.py` — code parsing: Python through `ast`, other languages
@@ -293,5 +294,6 @@ Tools: `code_search`, `symbol`, `callers`, `callees`, `references`,
   index automatically.
 - Files larger than `config.MAX_FILE_BYTES` and directories from `config.SKIP_DIRS`
   are not indexed.
-- The indexes are files in `.indexes` (not in git): sessions with different cwd work
-  in parallel and do not interfere with each other.
+- The indexes are files in `.indexes` under the current working directory (not in
+  git): sessions with different cwd work in parallel and do not interfere with each
+  other.
